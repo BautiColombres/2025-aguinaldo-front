@@ -1,6 +1,41 @@
 
+// FSEC-H2 — Resolve the API base URL with transport hardening.
+// Production (non-DEV) MUST provide an https:// VITE_API_BASE_URL; we fail loudly
+// otherwise instead of silently falling back to plaintext http. Only DEV may use
+// http://localhost / http://127.0.0.1 (and defaults to it when the var is unset).
+const resolveBaseUrl = (): string => {
+  const isDev = Boolean(import.meta.env.DEV);
+  const rawBaseUrl = import.meta.env.VITE_API_BASE_URL;
+  const baseUrl = typeof rawBaseUrl === 'string' ? rawBaseUrl.trim() : '';
+
+  const isLocalHttp =
+    baseUrl.startsWith('http://localhost') || baseUrl.startsWith('http://127.0.0.1');
+  const isHttps = baseUrl.startsWith('https://');
+
+  if (isDev) {
+    if (!baseUrl) {
+      return 'http://localhost:8080';
+    }
+    if (isHttps || isLocalHttp) {
+      return baseUrl;
+    }
+    throw new Error(
+      `FSEC-H2: VITE_API_BASE_URL must be https:// or http://localhost in DEV. Received: "${baseUrl}".`,
+    );
+  }
+
+  if (!isHttps) {
+    throw new Error(
+      'FSEC-H2: VITE_API_BASE_URL must be set to an https:// URL in production. ' +
+        'Refusing to fall back to an insecure http:// base URL.',
+    );
+  }
+
+  return baseUrl;
+};
+
 export const API_CONFIG = {
-  BASE_URL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080',
+  BASE_URL: resolveBaseUrl(),
 
   ENDPOINTS: {
     REGISTER_PATIENT: '/api/auth/register/patient',

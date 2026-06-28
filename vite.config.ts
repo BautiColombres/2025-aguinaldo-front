@@ -25,6 +25,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './test/setup.ts',
     include: [
+      'config/**/*.{test,spec}.{ts,tsx}',
       'src/core/**/*.{test,spec}.{ts,tsx}',
       'src/hooks/**/*.{test,spec}.{ts,tsx}',
       'src/machines/**/*.{test,spec}.{ts,tsx}',
