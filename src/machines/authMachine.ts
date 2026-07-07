@@ -352,9 +352,7 @@ export const authMachine = createMachine({
                 if (error) errors[key] = error;
               }
             }
-            
-            context.formErrors = errors;
-            
+
             return Object.keys(errors).length === 0;
           },
           actions: assign({

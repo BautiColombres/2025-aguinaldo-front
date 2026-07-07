@@ -316,6 +316,50 @@ describe('uiMachine', () => {
         type: 'CLEAR_PATIENT_SELECTION'
       });
     });
+
+    // FBUG-C2: NAVIGATE must update currentPath immutably via assign (new context),
+    // not mutate the previous context object in place.
+    it('should produce a new context via assign instead of mutating the previous one', () => {
+      actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
+      actor.start();
+
+      actor.send({
+        type: 'ADD_NAVIGATE_HOOK',
+        navigate: mockNavigate,
+        initialPath: '/home',
+      });
+
+      const contextBefore = actor.getSnapshot().context;
+      expect(contextBefore.currentPath).toBe('/home');
+
+      actor.send({ type: 'NAVIGATE', to: '/profile' });
+
+      const contextAfter = actor.getSnapshot().context;
+
+      // A new context object must be produced by assign.
+      expect(contextAfter).not.toBe(contextBefore);
+      // The previously-captured context must NOT have been mutated in place.
+      expect(contextBefore.currentPath).toBe('/home');
+      // The new context reflects the navigation.
+      expect(contextAfter.currentPath).toBe('/profile');
+    });
+
+    // FBUG-C2: the navigate() side-effect runs exactly once with the target path.
+    it('should call navigate exactly once with the target path', () => {
+      actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
+      actor.start();
+
+      actor.send({
+        type: 'ADD_NAVIGATE_HOOK',
+        navigate: mockNavigate,
+        initialPath: '/home',
+      });
+
+      actor.send({ type: 'NAVIGATE', to: '/profile' });
+
+      expect(mockNavigate).toHaveBeenCalledTimes(1);
+      expect(mockNavigate).toHaveBeenCalledWith('/profile');
+    });
   });
 
   describe('OPEN_SNACKBAR Event', () => {

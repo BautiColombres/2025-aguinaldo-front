@@ -123,27 +123,35 @@ export const uiMachine = createMachine({
           }),
         },
         NAVIGATE: {
-          actions: ({ context, event }) => {
-            if (event.to) {
-              const previousPath = context.currentPath;
-              context.navigate(event.to);
-              context.currentPath = event.to;
+          actions: [
+            // Side-effect: perform the navigation and any orchestrator sends.
+            // Reads the event; must NOT live inside assign.
+            ({ context, event }) => {
+              if (event.to) {
+                const previousPath = context.currentPath;
+                context.navigate(event.to);
 
-              if (event.to.startsWith('/patient-detail?patientId=') && previousPath !== event.to) {
-                const patientId = event.to.split('patientId=')[1];
-                
-                if (patientId) {
-                  orchestrator.send({
-                    type: "SELECT_PATIENT",
-                    patientId: patientId
-                  });
-                }
-                else{
-                  orchestrator.send({ type: "CLEAR_PATIENT_SELECTION" });
+                if (event.to.startsWith('/patient-detail?patientId=') && previousPath !== event.to) {
+                  const patientId = event.to.split('patientId=')[1];
+
+                  if (patientId) {
+                    orchestrator.send({
+                      type: "SELECT_PATIENT",
+                      patientId: patientId
+                    });
+                  }
+                  else {
+                    orchestrator.send({ type: "CLEAR_PATIENT_SELECTION" });
+                  }
                 }
               }
-            }
-          },
+            },
+            // Pure state update: set currentPath immutably via assign.
+            assign({
+              currentPath: ({ context, event }) =>
+                event.to ? event.to : context.currentPath,
+            }),
+          ],
         },
         OPEN_SNACKBAR: {
           actions: [assign({

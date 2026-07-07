@@ -312,6 +312,32 @@ describe('authMachine', () => {
       expect(actor.getSnapshot().value).toBe('idle');
       expect(actor.getSnapshot().context.hasErrorsOrEmpty).toBe(true);
     });
+
+    // FBUG-C1: guard purity — the validating guard returns a boolean based on the
+    // computed errors and does NOT rely on mutating context to surface them. The
+    // guard must return false (stay/transition to idle) when validation fails.
+    it('should return false from the guard (route to idle) when validation fails', () => {
+      mockFormValidation.validateField.mockReturnValue('Invalid email format');
+      actor.send({ type: 'UPDATE_FORM', key: 'userEmail', value: 'invalid-email' });
+
+      actor.send({ type: 'SUBMIT' });
+
+      // The valid-form guard evaluated to false, so we land in idle (not submitting).
+      expect(actor.getSnapshot().value).toBe('idle');
+    });
+
+    // FBUG-C1: errors must still surface to the UI via the assign path (NOT via a
+    // guard-side mutation, which was the deleted bug). Even after removing the
+    // `context.formErrors = errors` mutation from the guard, formErrors stays populated.
+    it('should still populate formErrors via the assign path when validation fails', () => {
+      mockFormValidation.validateField.mockReturnValue('Invalid email format');
+      actor.send({ type: 'UPDATE_FORM', key: 'userEmail', value: 'invalid-email' });
+
+      actor.send({ type: 'SUBMIT' });
+
+      expect(actor.getSnapshot().value).toBe('idle');
+      expect(actor.getSnapshot().context.formErrors.userEmail).toBe('Invalid email format');
+    });
   });
 
   describe('submitting state', () => {
