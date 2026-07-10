@@ -37,6 +37,7 @@ export default defineConfig(({ command }) => ({
       'src/providers/**/*.{test,spec}.{ts,tsx}',
       'src/service/**/*.{test,spec}.{ts,tsx}',
       'src/utils/**/*.{test,spec}.{ts,tsx}',
+      'src/components/**/*.{test,spec}.{ts,tsx}',
       'src/App.{test,spec}.{ts,tsx}',
       'src/main.{test,spec}.{ts,tsx}'
     ],

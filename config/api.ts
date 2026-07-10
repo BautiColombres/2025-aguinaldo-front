@@ -130,3 +130,67 @@ export const getAuthenticatedFetchOptions = (accessToken: string): RequestInit =
   credentials: 'include',
   signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
 });
+
+// FBUG-M6 — shared error classifier / mapper.
+// `AbortSignal.timeout` rejections (and manual aborts, 401s and network failures)
+// were previously handled ad-hoc — one machine only checked for 401, timeout/abort
+// rejections leaked raw/undefined text into the UI. This gives every machine one
+// place to classify a rejection and surface a localized message.
+export type ApiErrorKind = 'timeout' | 'unauthorized' | 'network' | 'unknown';
+
+export interface ClassifiedApiError {
+  kind: ApiErrorKind;
+  message: string;
+  status?: number;
+}
+
+export const API_ERROR_MESSAGES: Record<ApiErrorKind, string> = {
+  timeout:
+    'La solicitud tardó demasiado tiempo. Por favor, verificá tu conexión e intentá nuevamente.',
+  unauthorized: 'Tu sesión expiró. Por favor, iniciá sesión nuevamente.',
+  network: 'No se pudo conectar con el servidor. Verificá tu conexión a internet.',
+  unknown: 'Ocurrió un error inesperado. Por favor, intentá nuevamente.',
+};
+
+/**
+ * Classify an unknown rejection into a uniform, localized error.
+ *
+ * @param error The rejected value (Error, DOMException, string, ...).
+ * @param fallbackMessage Message used for the `unknown` kind when the error
+ *        carries no usable message (e.g. a non-Error rejection). Defaults to a
+ *        generic localized message.
+ */
+export const classifyApiError = (
+  error: unknown,
+  fallbackMessage: string = API_ERROR_MESSAGES.unknown,
+): ClassifiedApiError => {
+  // AbortSignal.timeout() rejects with a DOMException named 'TimeoutError';
+  // a manual AbortController.abort() rejects with 'AbortError'.
+  const name = (error as { name?: string } | null | undefined)?.name;
+  if (name === 'TimeoutError' || name === 'AbortError') {
+    return { kind: 'timeout', message: API_ERROR_MESSAGES.timeout };
+  }
+
+  if (error instanceof Error) {
+    const raw = error.message ?? '';
+    const lower = raw.toLowerCase();
+
+    if (raw.includes('401') || lower.includes('unauthorized')) {
+      return { kind: 'unauthorized', message: API_ERROR_MESSAGES.unauthorized, status: 401 };
+    }
+
+    // fetch() throws a TypeError ('Failed to fetch') on network failure.
+    if (
+      error instanceof TypeError ||
+      lower.includes('failed to fetch') ||
+      lower.includes('networkerror') ||
+      lower.includes('network request failed')
+    ) {
+      return { kind: 'network', message: API_ERROR_MESSAGES.network };
+    }
+
+    return { kind: 'unknown', message: raw || fallbackMessage };
+  }
+
+  return { kind: 'unknown', message: fallbackMessage };
+};

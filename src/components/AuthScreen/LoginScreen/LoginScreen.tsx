@@ -48,6 +48,13 @@ function LoginScreen() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // FBUG-M3 — close the brief double-submit window. Ignore the submit while a
+    // request is already in flight (loading) or the form is invalid/empty, which
+    // mirrors the disabled state of the submit button and prevents a second
+    // SUBMIT from being dispatched (e.g. via the Enter key).
+    if (authContext.loading || authContext.hasErrorsOrEmpty) {
+      return;
+    }
     authSend({ type: "SUBMIT" });
   };
 

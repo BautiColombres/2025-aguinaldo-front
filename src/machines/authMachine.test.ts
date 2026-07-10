@@ -365,6 +365,63 @@ describe('authMachine', () => {
     });
   });
 
+  // FBUG-M5 — submitting.onError must build a fully typed ApiErrorResponse payload
+  // (message/error), not an untyped partial assign.
+  describe('submitting onError (FBUG-M5)', () => {
+    it('produces a typed ApiErrorResponse on a general error', async () => {
+      vi.mocked(submitAuthentication).mockRejectedValue(new Error('Credenciales inválidas'));
+
+      actor = createActor(authMachine);
+      actor.start();
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      actor.send({ type: 'TOGGLE_MODE', mode: 'login' });
+      actor.send({ type: 'SUBMIT' });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().context.loading).toBe(false);
+        expect(actor.getSnapshot().context.authResponse).toBeTruthy();
+      });
+
+      const authResponse = actor.getSnapshot().context.authResponse as {
+        error?: string;
+        message?: string;
+      };
+
+      expect(authResponse.error).toBe('Credenciales inválidas');
+      expect(authResponse.message).toBe('Credenciales inválidas');
+      expect(actor.getSnapshot().value).toBe('idle');
+    });
+
+    it('maps backend field errors while still setting a typed authResponse', async () => {
+      const fieldError = Object.assign(new Error('validation'), {
+        fieldErrors: { userEmail: 'Correo ya registrado' },
+      });
+      vi.mocked(submitAuthentication).mockRejectedValue(fieldError);
+
+      actor = createActor(authMachine);
+      actor.start();
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      actor.send({ type: 'TOGGLE_MODE', mode: 'login' });
+      actor.send({ type: 'SUBMIT' });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().context.loading).toBe(false);
+        expect(actor.getSnapshot().context.formErrors?.userEmail).toBe('Correo ya registrado');
+      });
+
+      const authResponse = actor.getSnapshot().context.authResponse as { error?: string };
+      expect(authResponse.error).toBe('Por favor revise los campos marcados con error');
+    });
+  });
+
   // FSEC-H1 Stage 2 — the single-choke-point + no-persistence invariants.
   describe('FSEC-H1 token storage', () => {
     it('login onDone must NOT persist tokens via saveAuthData', async () => {

@@ -136,4 +136,80 @@ describe('config/api BASE_URL resolution (FSEC-H2)', () => {
       ).toBeUndefined();
     });
   });
+
+  // FBUG-M6 — shared error classifier. AbortSignal.timeout rejections and other
+  // transport failures must be mapped uniformly to a localized message instead of
+  // leaking raw/undefined error text, so every machine can consume the same map.
+  describe('classifyApiError (FBUG-M6)', () => {
+    beforeEach(() => {
+      vi.stubEnv('DEV', true);
+      vi.stubEnv('VITE_API_BASE_URL', 'http://localhost:8080');
+    });
+
+    it('maps an AbortSignal.timeout TimeoutError to a timeout message', async () => {
+      const { classifyApiError, API_ERROR_MESSAGES } = await importApi();
+      const err = new DOMException('The operation timed out.', 'TimeoutError');
+
+      const result = classifyApiError(err);
+
+      expect(result.kind).toBe('timeout');
+      expect(result.message).toBe(API_ERROR_MESSAGES.timeout);
+    });
+
+    it('maps a manual AbortError to a timeout message', async () => {
+      const { classifyApiError, API_ERROR_MESSAGES } = await importApi();
+      const err = new DOMException('Aborted', 'AbortError');
+
+      const result = classifyApiError(err);
+
+      expect(result.kind).toBe('timeout');
+      expect(result.message).toBe(API_ERROR_MESSAGES.timeout);
+    });
+
+    it('maps a 401 error to the unauthorized message', async () => {
+      const { classifyApiError, API_ERROR_MESSAGES } = await importApi();
+
+      const result = classifyApiError(new Error('Request failed with status 401'));
+
+      expect(result.kind).toBe('unauthorized');
+      expect(result.status).toBe(401);
+      expect(result.message).toBe(API_ERROR_MESSAGES.unauthorized);
+    });
+
+    it('maps an "unauthorized" message to the unauthorized message', async () => {
+      const { classifyApiError, API_ERROR_MESSAGES } = await importApi();
+
+      const result = classifyApiError(new Error('Unauthorized'));
+
+      expect(result.kind).toBe('unauthorized');
+      expect(result.message).toBe(API_ERROR_MESSAGES.unauthorized);
+    });
+
+    it('maps a fetch TypeError to the network message', async () => {
+      const { classifyApiError, API_ERROR_MESSAGES } = await importApi();
+
+      const result = classifyApiError(new TypeError('Failed to fetch'));
+
+      expect(result.kind).toBe('network');
+      expect(result.message).toBe(API_ERROR_MESSAGES.network);
+    });
+
+    it('preserves a generic Error message under the unknown kind', async () => {
+      const { classifyApiError } = await importApi();
+
+      const result = classifyApiError(new Error('Boom specific'));
+
+      expect(result.kind).toBe('unknown');
+      expect(result.message).toBe('Boom specific');
+    });
+
+    it('uses the provided fallback message for non-Error rejections', async () => {
+      const { classifyApiError } = await importApi();
+
+      const result = classifyApiError('some string', 'Error al cargar doctores');
+
+      expect(result.kind).toBe('unknown');
+      expect(result.message).toBe('Error al cargar doctores');
+    });
+  });
 });

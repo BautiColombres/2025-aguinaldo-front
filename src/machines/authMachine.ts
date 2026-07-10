@@ -447,29 +447,39 @@ export const authMachine = createMachine({
         ],
         onError: {
           target: "idle",
-          actions: assign(({ event, context }) => {
+          // FBUG-M5 — build a fully typed ApiErrorResponse payload instead of an
+          // untyped partial assign, so consumers can rely on a consistent shape.
+          actions: assign(({ event, context }): Partial<AuthMachineContext> => {
             const error = event.error;
-            
+
             // Handle validation errors from backend
-            if (error && (error as any).fieldErrors) {
+            if (error && (error as { fieldErrors?: Record<string, string> }).fieldErrors) {
+              const fieldErrors = (error as { fieldErrors: Record<string, string> }).fieldErrors;
+              const validationResponse: ApiErrorResponse = {
+                error: 'Por favor revise los campos marcados con error',
+                message: 'Por favor revise los campos marcados con error',
+              };
               return {
                 formErrors: {
                   ...context.formErrors,
-                  ...(error as any).fieldErrors
+                  ...fieldErrors,
                 },
-                authResponse: { 
-                  error: 'Por favor revise los campos marcados con error'
-                },
-                loading: false
+                authResponse: validationResponse,
+                loading: false,
               };
             }
-            
+
             // Handle general errors
+            const message = error instanceof Error ? error.message : 'Error en autenticación';
+            const status = (error as { status?: number } | null)?.status;
+            const generalResponse: ApiErrorResponse = {
+              error: message,
+              message,
+              ...(typeof status === 'number' ? { status } : {}),
+            };
             return {
-              authResponse: { 
-                error: error instanceof Error ? error.message : 'Error en autenticación' 
-              },
-              loading: false
+              authResponse: generalResponse,
+              loading: false,
             };
           })
         }
