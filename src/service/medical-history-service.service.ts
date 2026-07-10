@@ -1,4 +1,5 @@
 import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
+import { logger } from '../utils/logger';
 import type { 
   MedicalHistory, 
   CreateMedicalHistoryRequest, 
@@ -35,7 +36,7 @@ export class MedicalHistoryService {
 
       return await response.json();
     } catch (error) {
-      console.error('Failed to add medical history:', error);
+      logger.error('Failed to add medical history:', error);
       throw error;
     }
   }
@@ -73,7 +74,7 @@ export class MedicalHistoryService {
 
       return await response.json();
     } catch (error) {
-      console.error('Failed to update medical history:', error);
+      logger.error('Failed to update medical history:', error);
       throw error;
     }
   }
@@ -107,7 +108,7 @@ export class MedicalHistoryService {
         );
       }
     } catch (error) {
-      console.error('Failed to delete medical history:', error);
+      logger.error('Failed to delete medical history:', error);
       throw error;
     }
   }
@@ -138,7 +139,7 @@ export class MedicalHistoryService {
 
       return await response.json();
     } catch (error) {
-      console.error('Failed to get doctor medical history:', error);
+      logger.error('Failed to get doctor medical history:', error);
       throw error;
     }
   }
@@ -169,7 +170,7 @@ export class MedicalHistoryService {
 
       return await response.json();
     } catch (error) {
-      console.error('Failed to get patient medical history:', error);
+      logger.error('Failed to get patient medical history:', error);
       throw error;
     }
   }
@@ -205,7 +206,7 @@ export class MedicalHistoryService {
 
       return await response.json();
     } catch (error) {
-      console.error('Failed to get patient medical history by doctor:', error);
+      logger.error('Failed to get patient medical history by doctor:', error);
       throw error;
     }
   }

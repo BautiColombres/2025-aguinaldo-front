@@ -94,6 +94,16 @@ describe('config/api BASE_URL resolution (FSEC-H2)', () => {
     expect(mod.buildApiUrl('/api/auth/signin')).toBe('http://localhost:8080/api/auth/signin');
   });
 
+  // FBUG-H3 — the dead RESERVE_TURN reserve flow was removed frontend + backend.
+  it('no longer exposes the RESERVE_TURN endpoint', async () => {
+    vi.stubEnv('DEV', true);
+    vi.stubEnv('VITE_API_BASE_URL', 'http://localhost:8080');
+    const { API_CONFIG } = await importApi();
+    const endpoints = API_CONFIG.ENDPOINTS as Record<string, string>;
+    expect('RESERVE_TURN' in endpoints).toBe(false);
+    expect(Object.values(endpoints)).not.toContain('/api/turns/reserve');
+  });
+
   // FSEC-H1 Stage 2 — the refresh cookie is httpOnly and travels only when
   // fetch opts in with credentials: 'include'. Both the default (unauthenticated
   // signin/refresh/signout) and the authenticated request options must include it.

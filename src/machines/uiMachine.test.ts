@@ -126,6 +126,40 @@ describe('uiMachine', () => {
       });
     });
 
+    // FBUG-H5: patientId must be parsed with URLSearchParams so extra/ordered
+    // query params do not corrupt the value.
+    it('should parse patientId via URLSearchParams when extra params follow it (initial path)', () => {
+      actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
+      actor.start();
+
+      actor.send({
+        type: 'ADD_NAVIGATE_HOOK',
+        navigate: mockNavigate,
+        initialPath: '/patient-detail?patientId=patient123&foo=bar&baz=qux',
+      });
+
+      expect(mockOrchestrator.send).toHaveBeenCalledWith({
+        type: 'SELECT_PATIENT',
+        patientId: 'patient123'
+      });
+    });
+
+    it('should parse patientId when it is not the first query param (initial path)', () => {
+      actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
+      actor.start();
+
+      actor.send({
+        type: 'ADD_NAVIGATE_HOOK',
+        navigate: mockNavigate,
+        initialPath: '/patient-detail?foo=bar&patientId=patient777',
+      });
+
+      expect(mockOrchestrator.send).toHaveBeenCalledWith({
+        type: 'SELECT_PATIENT',
+        patientId: 'patient777'
+      });
+    });
+
     it('should handle turn cancellation from patient view turns', () => {
       actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
       actor.start();
@@ -314,6 +348,44 @@ describe('uiMachine', () => {
 
       expect(mockOrchestrator.send).toHaveBeenCalledWith({
         type: 'CLEAR_PATIENT_SELECTION'
+      });
+    });
+
+    // FBUG-H5: NAVIGATE must parse patientId with URLSearchParams so extra/ordered
+    // query params do not corrupt the value.
+    it('should parse patientId via URLSearchParams when extra params follow it (NAVIGATE)', () => {
+      actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
+      actor.start();
+
+      actor.send({
+        type: 'ADD_NAVIGATE_HOOK',
+        navigate: mockNavigate,
+        initialPath: '/home',
+      });
+
+      actor.send({ type: 'NAVIGATE', to: '/patient-detail?patientId=patient555&tab=history' });
+
+      expect(mockOrchestrator.send).toHaveBeenCalledWith({
+        type: 'SELECT_PATIENT',
+        patientId: 'patient555'
+      });
+    });
+
+    it('should parse patientId when it is not the first query param (NAVIGATE)', () => {
+      actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
+      actor.start();
+
+      actor.send({
+        type: 'ADD_NAVIGATE_HOOK',
+        navigate: mockNavigate,
+        initialPath: '/home',
+      });
+
+      actor.send({ type: 'NAVIGATE', to: '/patient-detail?tab=history&patientId=patient888' });
+
+      expect(mockOrchestrator.send).toHaveBeenCalledWith({
+        type: 'SELECT_PATIENT',
+        patientId: 'patient888'
       });
     });
 

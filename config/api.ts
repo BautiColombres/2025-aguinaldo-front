@@ -45,7 +45,6 @@ export const API_CONFIG = {
     REFRESH_TOKEN: '/api/auth/refresh-token',
 
     CREATE_TURN: '/api/turns',
-    RESERVE_TURN: '/api/turns/reserve',
     GET_AVAILABLE_TURNS: '/api/turns/available',
     GET_MY_TURNS: '/api/turns/my-turns',
     GET_DOCTOR_TURNS: '/api/turns/doctor',

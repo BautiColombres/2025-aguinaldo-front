@@ -1,4 +1,5 @@
 import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions, getDefaultFetchOptions } from '../../config/api';
+import { logger } from '../utils/logger';
 import type {
     RegisterRequestData,
     RegisterResponse,
@@ -40,7 +41,7 @@ export class AuthService {
       const result: RegisterResponse = await response.json();
       return result;
     } catch (error) {
-      console.error('Patient registration failed:', error);
+      logger.error('Patient registration failed:', error);
       throw error;
     }
   }
@@ -61,7 +62,7 @@ export class AuthService {
 
       return await response.json();
     } catch (error) {
-      console.error('Account verification failed:', error);
+      logger.error('Account verification failed:', error);
       throw error;
     }
   }
@@ -96,7 +97,7 @@ export class AuthService {
       const result: RegisterResponse = await response.json();
       return result;
     } catch (error) {
-      console.error('Doctor registration failed:', error);
+      logger.error('Doctor registration failed:', error);
       throw error;
     }
   }
@@ -124,7 +125,7 @@ export class AuthService {
       
       return result;
     } catch (error) {
-      console.error('Sign in failed:', error);
+      logger.error('Sign in failed:', error);
       throw error;
     }
   }
@@ -151,7 +152,7 @@ export class AuthService {
       }
 
     } catch (error) {
-      console.error('Sign out failed:', error);
+      logger.error('Sign out failed:', error);
       throw error;
     }
   }
@@ -180,7 +181,7 @@ export class AuthService {
 
       return result;
     } catch (error) {
-      console.error('Token refresh failed:', error);
+      logger.error('Token refresh failed:', error);
       throw error;
     }
   }
@@ -226,7 +227,7 @@ export class AuthService {
         const result: ProfileResponse = await response.json();
         return result;
       } catch (error) {
-        console.error('Failed to fetch data profile:', error);
+        logger.error('Failed to fetch data profile:', error);
         throw error;
       }
     }
@@ -257,7 +258,7 @@ export class AuthService {
         const result: ProfileResponse = await response.json();
         return result;
       } catch (error) {
-        console.error("Failed to update profile:", error);
+        logger.error("Failed to update profile:", error);
         throw error;
       }
     }
@@ -273,7 +274,7 @@ export class AuthService {
 
         if (!response.ok) {
           const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
-          console.error('Error en desactivación:', errorData);
+          logger.error('Error en desactivación:', errorData);
           throw new Error(
             errorData?.message ||
             errorData?.error ||
@@ -284,7 +285,7 @@ export class AuthService {
         // Clear auth data immediately after successful deactivation
         this.clearAuthData();
       } catch (error) {
-        console.error("Failed to deactivate account:", error);
+        logger.error("Failed to deactivate account:", error);
         throw error;
       }
     }

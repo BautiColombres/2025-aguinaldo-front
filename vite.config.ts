@@ -4,8 +4,13 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react()],
+  // FSEC-M2 — Strip console.* / debugger from PRODUCTION builds only
+  // (command === 'build'). Dev serve (command === 'serve') and Vitest (which runs
+  // in 'serve' mode) keep console output so the dev-only `logger` util and the
+  // logger.test.ts console spies still work.
+  esbuild: command === 'build' ? { drop: ['console', 'debugger'] } : {},
   resolve: {
     alias: {
       '#': path.resolve(__dirname, './src')
@@ -56,4 +61,4 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false
   }
-})
+}))

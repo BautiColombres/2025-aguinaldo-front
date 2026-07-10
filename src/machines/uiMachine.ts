@@ -86,8 +86,11 @@ export const uiMachine = createMachine({
             }),
             ({ event }: any) => {
               const initialPath = event.initialPath || '/';
-              if (initialPath.startsWith('/patient-detail?patientId=')) {
-                const patientId = initialPath.split('patientId=')[1];
+              if (initialPath.startsWith('/patient-detail')) {
+                // FBUG-H5: parse robustly with URLSearchParams so extra/ordered
+                // query params don't corrupt the patientId.
+                const queryString = initialPath.split('?')[1] || '';
+                const patientId = new URLSearchParams(queryString).get('patientId');
                 if (patientId) {
                   orchestrator.send({
                     type: "SELECT_PATIENT",
@@ -131,8 +134,11 @@ export const uiMachine = createMachine({
                 const previousPath = context.currentPath;
                 context.navigate(event.to);
 
-                if (event.to.startsWith('/patient-detail?patientId=') && previousPath !== event.to) {
-                  const patientId = event.to.split('patientId=')[1];
+                if (event.to.startsWith('/patient-detail') && previousPath !== event.to) {
+                  // FBUG-H5: parse robustly with URLSearchParams so extra/ordered
+                  // query params don't corrupt the patientId.
+                  const queryString = event.to.split('?')[1] || '';
+                  const patientId = new URLSearchParams(queryString).get('patientId');
 
                   if (patientId) {
                     orchestrator.send({

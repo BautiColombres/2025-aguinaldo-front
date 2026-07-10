@@ -28,6 +28,9 @@ const AppRouter = () => {
     return <LogoutLoadingScreen />;
   }
 
+  // FSEC-M1 — cosmetic auth gate: `isAuthenticated` (client-held) only decides
+  // whether to render the app shell vs the auth screen. It is not a security
+  // boundary — every privileged request is authorized server-side by the JWT.
   return authState?.context.isAuthenticated ? <App /> : <AuthScreen />;
 };
 

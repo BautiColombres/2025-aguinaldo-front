@@ -1,4 +1,5 @@
 import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
+import { logger } from '../utils/logger';
 import { orchestrator } from '#/core/Orchestrator';
 
 export interface NotificationResponse {
@@ -37,7 +38,7 @@ export class NotificationService {
 
       if (!response.ok) {
         const errorData: any = await response.json().catch(() => ({}));
-        console.error('[NotificationService] getNotifications - Error:', errorData);
+        logger.error('[NotificationService] getNotifications - Error:', errorData);
         throw new Error(
           errorData?.message ||
           errorData?.error ||
@@ -47,7 +48,7 @@ export class NotificationService {
       const result: { notifications: NotificationResponse[] } = await response.json();
       return result.notifications;
     } catch (error) {
-      console.error('[NotificationService] getNotifications - Exception:', error);
+      logger.error('[NotificationService] getNotifications - Exception:', error);
       throw error;
     }
   }
@@ -66,7 +67,7 @@ export class NotificationService {
 
       if (!response.ok) {
         const errorData: any = await response.json().catch(() => ({}));
-        console.error('[NotificationService] deleteNotification - Error:', errorData);
+        logger.error('[NotificationService] deleteNotification - Error:', errorData);
         throw new Error(
           errorData?.message ||
           errorData?.error ||
@@ -74,7 +75,7 @@ export class NotificationService {
         );
       }
     } catch (error) {
-      console.error('[NotificationService] deleteNotification - Exception:', error);
+      logger.error('[NotificationService] deleteNotification - Exception:', error);
       throw error;
     }
   }

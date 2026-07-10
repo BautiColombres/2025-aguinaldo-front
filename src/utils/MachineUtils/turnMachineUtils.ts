@@ -1,16 +1,10 @@
 import { TurnService } from "../../service/turn-service.service";
-import { API_CONFIG, buildApiUrl } from "../../../config/api";
+import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from "../../../config/api";
 import type { TurnResponse } from "../../models/Turn";
 
 /**
  * Utility functions for turnMachine service calls
  */
-
-export interface ReserveTurnParams {
-  accessToken: string;
-  userId: string;
-  turnId: string;
-}
 
 export interface CreateTurnParams {
   accessToken: string;
@@ -147,36 +141,15 @@ export const createModifyTurnRequest = async ({ accessToken, turnId, newSchedule
  */
 export const loadTurnDetails = async ({ turnId, accessToken }: { turnId: string; accessToken: string }): Promise<TurnResponse | null> => {
   try {
+    // Route through the centralized config/api helpers. getAuthenticatedFetchOptions
+    // sets credentials:'include', so the refresh flow is handled centrally (post
+    // FSEC-H1) — no hand-rolled fetch config or manual refresh-token retry here.
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_MY_TURNS);
-    let response = await fetch(url, {
+    const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
+      ...getAuthenticatedFetchOptions(accessToken),
     });
 
-    if (response.status === 401) {
-      // FSEC-H1 Stage 2 — cookie-based refresh. Mint a fresh access token via the
-      // httpOnly refresh cookie (no token read from / written to localStorage),
-      // then retry with the new Bearer token.
-      try {
-        const { AuthService } = await import('../../service/auth-service.service');
-        const refreshed = await AuthService.refreshToken();
-        if (refreshed.accessToken) {
-          response = await fetch(url, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${refreshed.accessToken}`,
-              'Content-Type': 'application/json'
-            }
-          });
-        }
-      } catch (refreshError) {
-        console.error('Error al refrescar el token en loadTurnDetails:', refreshError);
-        throw new Error('Sesión expirada. Por favor, vuelve a iniciar sesión.');
-      }
-    }
     if (!response.ok) {
       const errorData = await response.text();
       throw new Error(`Failed to load my turns: ${response.statusText} - ${errorData}`);

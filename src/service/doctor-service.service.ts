@@ -1,4 +1,5 @@
 import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
+import { logger } from '../utils/logger';
 import type { Patient, ApiErrorResponse } from '../models/Doctor';
 
 export interface TimeRange {
@@ -69,7 +70,7 @@ export class DoctorService {
       const result: Patient[] = await  response.json();
       return result;
     } catch (error) {
-      console.error('Failed to fetch doctor patients:', error);
+      logger.error('Failed to fetch doctor patients:', error);
       throw error;
     }
   }
@@ -93,7 +94,7 @@ export class DoctorService {
         );
       }
     } catch (error) {
-      console.error('Failed to save availability:', error);
+      logger.error('Failed to save availability:', error);
       throw error;
     }
   }
@@ -118,7 +119,7 @@ export class DoctorService {
       const result: DoctorAvailabilityResponse = await  response.json();
       return result;
     } catch (error) {
-      console.error('Failed to fetch availability:', error);
+      logger.error('Failed to fetch availability:', error);
       throw error;
     }
   }
@@ -144,7 +145,7 @@ export class DoctorService {
       const result: AvailableSlot[] = await response.json();
       return result;
     } catch (error) {
-      console.error('Failed to fetch available slots:', error);
+      logger.error('Failed to fetch available slots:', error);
       throw error;
     }
   }
@@ -173,7 +174,7 @@ export class DoctorService {
       const result: DoctorMetrics = await response.json();
       return result;
     } catch (error) {
-      console.error('Failed to fetch doctor metrics:', error);
+      logger.error('Failed to fetch doctor metrics:', error);
       throw error;
     }
   }

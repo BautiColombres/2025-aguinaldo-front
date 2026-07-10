@@ -91,12 +91,6 @@ orchestrator.registerMachine({
 });
 
 orchestrator.registerMachine({
-  id: DOCTOR_MACHINE_ID,
-  machine: doctorMachine,
-  eventTypes: DOCTOR_MACHINE_EVENT_TYPES
-});
-
-orchestrator.registerMachine({
   id: RATING_MACHINE_ID,
   machine: ratingMachine,
   eventTypes: RATING_MACHINE_EVENT_TYPES
