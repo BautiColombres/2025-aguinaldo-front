@@ -93,4 +93,37 @@ describe('config/api BASE_URL resolution (FSEC-H2)', () => {
     expect(mod.API_CONFIG.ENDPOINTS.SIGNIN).toBe('/api/auth/signin');
     expect(mod.buildApiUrl('/api/auth/signin')).toBe('http://localhost:8080/api/auth/signin');
   });
+
+  // FSEC-H1 Stage 2 — the refresh cookie is httpOnly and travels only when
+  // fetch opts in with credentials: 'include'. Both the default (unauthenticated
+  // signin/refresh/signout) and the authenticated request options must include it.
+  describe('credentials: include (FSEC-H1)', () => {
+    beforeEach(() => {
+      vi.stubEnv('DEV', true);
+      vi.stubEnv('VITE_API_BASE_URL', 'http://localhost:8080');
+    });
+
+    it("getDefaultFetchOptions sends credentials: 'include'", async () => {
+      const { getDefaultFetchOptions } = await importApi();
+      expect(getDefaultFetchOptions().credentials).toBe('include');
+    });
+
+    it("getAuthenticatedFetchOptions sends credentials: 'include'", async () => {
+      const { getAuthenticatedFetchOptions } = await importApi();
+      expect(getAuthenticatedFetchOptions('access-token').credentials).toBe('include');
+    });
+
+    it('getAuthenticatedFetchOptions still attaches the Bearer access token', async () => {
+      const { getAuthenticatedFetchOptions } = await importApi();
+      const opts = getAuthenticatedFetchOptions('access-token');
+      expect((opts.headers as Record<string, string>).Authorization).toBe('Bearer access-token');
+    });
+
+    it('no longer exposes getAuthenticatedFetchOptionsWithRefreshToken', async () => {
+      const mod = await importApi();
+      expect(
+        (mod as Record<string, unknown>).getAuthenticatedFetchOptionsWithRefreshToken,
+      ).toBeUndefined();
+    });
+  });
 });

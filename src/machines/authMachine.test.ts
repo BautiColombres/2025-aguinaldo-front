@@ -29,7 +29,8 @@ vi.mock('../utils/MachineUtils/authMachineUtils', () => ({
 
 import { authMachine } from './authMachine';
 import { orchestrator } from '#/core/Orchestrator';
-import { checkStoredAuth, logoutUser } from '../utils/MachineUtils/authMachineUtils';
+import { AuthService } from '../service/auth-service.service';
+import { checkStoredAuth, logoutUser, submitAuthentication } from '../utils/MachineUtils/authMachineUtils';
 import { validateField, checkFormValidation } from '../utils/authFormValidation';
 
 describe('authMachine', () => {
@@ -342,20 +343,84 @@ describe('authMachine', () => {
 
   describe('submitting state', () => {
     beforeEach(async () => {
+      // Keep the submit in-flight so we can observe the submitting entry state
+      // (a resolved promise would immediately advance to authenticated/idle).
+      vi.mocked(submitAuthentication).mockReturnValue(new Promise(() => {}));
+
       actor = createActor(authMachine);
       actor.start();
-      
+
       // Wait for initial auth check to complete
       await vi.waitFor(() => {
         expect(actor.getSnapshot().value).toBe('idle');
       });
-      
+
       actor.send({ type: 'TOGGLE_MODE', mode: 'login' });
       actor.send({ type: 'SUBMIT' });
     });
 
     it('should set loading to true on entry', () => {
+      expect(actor.getSnapshot().value).toBe('submitting');
       expect(actor.getSnapshot().context.loading).toBe(true);
+    });
+  });
+
+  // FSEC-H1 Stage 2 — the single-choke-point + no-persistence invariants.
+  describe('FSEC-H1 token storage', () => {
+    it('login onDone must NOT persist tokens via saveAuthData', async () => {
+      vi.mocked(submitAuthentication).mockResolvedValue({
+        id: '1',
+        role: 'PATIENT',
+        status: 'ACTIVE',
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token'
+      } as any);
+
+      actor = createActor(authMachine);
+      actor.start();
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      actor.send({ type: 'TOGGLE_MODE', mode: 'login' });
+      actor.send({ type: 'SUBMIT' });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('authenticated');
+      });
+
+      expect(actor.getSnapshot().context.isAuthenticated).toBe(true);
+      expect(vi.mocked(AuthService.saveAuthData)).not.toHaveBeenCalled();
+    });
+
+    it('refreshingToken calls cookie-based AuthService.refreshToken() with no argument and does not persist', async () => {
+      vi.mocked(checkStoredAuth).mockResolvedValue({
+        authData: { accessToken: 'token123', id: '1', role: 'PATIENT', status: 'ACTIVE' },
+        isAuthenticated: true
+      });
+      vi.mocked(AuthService.refreshToken).mockResolvedValue({
+        id: '1',
+        role: 'PATIENT',
+        status: 'ACTIVE',
+        accessToken: 'new-access-token'
+      } as any);
+
+      actor = createActor(authMachine);
+      actor.start();
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('authenticated');
+      });
+
+      actor.send({ type: 'HANDLE_AUTH_ERROR', error: new Error('Token expired') });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('authenticated');
+      });
+
+      expect(vi.mocked(AuthService.refreshToken)).toHaveBeenCalledWith();
+      expect(vi.mocked(AuthService.saveAuthData)).not.toHaveBeenCalled();
     });
   });
 

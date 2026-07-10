@@ -157,26 +157,24 @@ export const loadTurnDetails = async ({ turnId, accessToken }: { turnId: string;
     });
 
     if (response.status === 401) {
-      // Intentar refresh token
-      const authData = JSON.parse(localStorage.getItem('authData') || '{}');
-      if (authData.refreshToken) {
-        try {
-          const { AuthService } = await import('../../service/auth-service.service');
-          const refreshed = await AuthService.refreshToken(authData.refreshToken);
-          if (refreshed.accessToken) {
-            localStorage.setItem('authData', JSON.stringify(refreshed));
-            response = await fetch(url, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Bearer ${refreshed.accessToken}`,
-                'Content-Type': 'application/json'
-              }
-            });
-          }
-        } catch (refreshError) {
-          console.error('Error al refrescar el token en loadTurnDetails:', refreshError);
-          throw new Error('Sesión expirada. Por favor, vuelve a iniciar sesión.');
+      // FSEC-H1 Stage 2 — cookie-based refresh. Mint a fresh access token via the
+      // httpOnly refresh cookie (no token read from / written to localStorage),
+      // then retry with the new Bearer token.
+      try {
+        const { AuthService } = await import('../../service/auth-service.service');
+        const refreshed = await AuthService.refreshToken();
+        if (refreshed.accessToken) {
+          response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${refreshed.accessToken}`,
+              'Content-Type': 'application/json'
+            }
+          });
         }
+      } catch (refreshError) {
+        console.error('Error al refrescar el token en loadTurnDetails:', refreshError);
+        throw new Error('Sesión expirada. Por favor, vuelve a iniciar sesión.');
       }
     }
     if (!response.ok) {

@@ -164,16 +164,18 @@ describe('turnMachineUtils', () => {
       await expect(loadTurnDetails(params)).rejects.toThrow('Turn with ID turn999 not found in your turns')
     })
 
-    it('should refresh token and retry on 401', async () => {
+    // FSEC-H1 Stage 2 — on 401 the retry mints a fresh access token via the
+    // cookie-based refresh endpoint (no argument), never touching localStorage.
+    it('should refresh token via cookie and retry on 401 without touching localStorage', async () => {
       const params = {
         turnId: 'turn456',
         accessToken: 'old-token'
       }
       const mockTurns = [{ id: 'turn456', status: 'PENDING' }]
 
-      // Mock localStorage
+      // Mock localStorage to assert it is never read/written for tokens
       const localStorageMock = {
-        getItem: vi.fn().mockReturnValue(JSON.stringify({ refreshToken: 'refresh-token' })),
+        getItem: vi.fn(),
         setItem: vi.fn()
       }
       Object.defineProperty(window, 'localStorage', { value: localStorageMock })
@@ -189,20 +191,25 @@ describe('turnMachineUtils', () => {
           json: vi.fn().mockResolvedValue(mockTurns)
         })
 
-      // Mock AuthService.refreshToken
+      // Mock AuthService.refreshToken (cookie-based, no argument)
       const { AuthService } = await import('../../service/auth-service.service')
       ;(AuthService.refreshToken as Mock).mockResolvedValue({
-        accessToken: 'new-token',
-        refreshToken: 'new-refresh'
+        accessToken: 'new-token'
       })
 
       const result = await loadTurnDetails(params)
 
-      expect(AuthService.refreshToken).toHaveBeenCalledWith('refresh-token')
-      expect(localStorage.setItem).toHaveBeenCalledWith('authData', JSON.stringify({
-        accessToken: 'new-token',
-        refreshToken: 'new-refresh'
-      }))
+      expect(AuthService.refreshToken).toHaveBeenCalledWith()
+      expect(localStorageMock.getItem).not.toHaveBeenCalled()
+      expect(localStorageMock.setItem).not.toHaveBeenCalled()
+      // Retry uses the freshly minted access token.
+      expect(global.fetch).toHaveBeenLastCalledWith('http://localhost:8080/api/turns/my-turns', {
+        method: 'GET',
+        headers: {
+          'Authorization': 'Bearer new-token',
+          'Content-Type': 'application/json'
+        }
+      })
       expect(result).toEqual({ id: 'turn456', status: 'PENDING' })
     })
 

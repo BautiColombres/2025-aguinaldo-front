@@ -113,8 +113,13 @@ export const buildApiUrl = (endpoint: string): string => {
   return `${API_CONFIG.BASE_URL}${endpoint}`;
 };
 
+// FSEC-H1 — credentials: 'include' so the httpOnly refresh cookie (scoped to
+// /api/auth) travels on signin (to receive Set-Cookie), refresh-token, and
+// signout. Non-auth endpoints authenticate via the Bearer header; the cookie's
+// Path=/api/auth means it is simply not attached elsewhere.
 export const getDefaultFetchOptions = (): RequestInit => ({
   headers: API_CONFIG.DEFAULT_HEADERS,
+  credentials: 'include',
   signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
 });
 
@@ -123,14 +128,6 @@ export const getAuthenticatedFetchOptions = (accessToken: string): RequestInit =
     ...API_CONFIG.DEFAULT_HEADERS,
     'Authorization': `Bearer ${accessToken}`,
   },
-  signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
-});
-
-export const getAuthenticatedFetchOptionsWithRefreshToken = (accessToken: string, refreshToken: string): RequestInit => ({
-  headers: {
-    ...API_CONFIG.DEFAULT_HEADERS,
-    'Authorization': `Bearer ${accessToken}`,
-    'Refresh-Token': refreshToken,
-  },
+  credentials: 'include',
   signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
 });

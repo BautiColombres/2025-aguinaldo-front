@@ -406,11 +406,10 @@ export const authMachine = createMachine({
             guard: ({ context }) => context.mode === "login",
             actions: assign(({ event }) => {
               const response = event.output;
-              
-              if (response.accessToken && response.refreshToken) {
-                AuthService.saveAuthData(response);
-              }
-              
+
+              // FSEC-H1 Stage 2 — no token persistence. The access token lives in
+              // context (SET_AUTH on the authenticated entry) and the refresh token
+              // stays in the httpOnly cookie set by the backend on signin.
               return {
                 isAuthenticated: true,
                 authResponse: response,
@@ -479,18 +478,12 @@ export const authMachine = createMachine({
 
     refreshingToken: {
       invoke: {
-        src: fromPromise(async ({ input }) => {
-          const context = input;
-          if (!context.authResponse || !("refreshToken" in context.authResponse)) {
-            throw new Error("No refresh token available");
-          }
-          
-          const refreshToken = (context.authResponse as SignInResponse).refreshToken;
-          const response = await AuthService.refreshToken(refreshToken);
-          
-          // Update localStorage with new tokens
-          localStorage.setItem('authData', JSON.stringify(response));
-          
+        src: fromPromise(async () => {
+          // FSEC-H1 Stage 2 — cookie-based refresh. The httpOnly refresh cookie
+          // travels automatically (credentials: 'include'); no token is read from
+          // context and nothing is persisted. The new access token flows to the
+          // machines via SET_AUTH in onDone below.
+          const response = await AuthService.refreshToken();
           return response;
         }),
         input: ({ context }) => context,

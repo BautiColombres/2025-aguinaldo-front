@@ -30,13 +30,15 @@ vi.mock('../../config/api', () => ({
   getDefaultFetchOptions: vi.fn(() => ({
     headers: {
       'Content-Type': 'application/json'
-    }
+    },
+    credentials: 'include'
   })),
   getAuthenticatedFetchOptions: vi.fn((token: string) => ({
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`
-    }
+    },
+    credentials: 'include'
   }))
 }));
 
@@ -279,24 +281,25 @@ describe('AuthService', () => {
   });
 
   describe('signOut', () => {
-    const refreshToken = 'refresh-token-456';
-
-    it('should successfully sign out user', async () => {
+    // FSEC-H1 Stage 2 — signOut takes no argument; the refresh token travels as
+    // an httpOnly cookie via credentials: 'include'. No Refresh-Token header.
+    it('should successfully sign out user with credentials and no Refresh-Token header', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true
       });
 
-      await expect(AuthService.signOut(refreshToken)).resolves.toBeUndefined();
+      await expect(AuthService.signOut()).resolves.toBeUndefined();
 
       expect(mockFetch).toHaveBeenCalledWith(
         'http://localhost:8080/api/auth/signout',
         expect.objectContaining({
           method: 'POST',
-          headers: expect.objectContaining({
-            'Refresh-Token': refreshToken
-          })
+          credentials: 'include'
         })
       );
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect((options.headers ?? {})['Refresh-Token']).toBeUndefined();
     });
 
     it('should throw error when sign out fails', async () => {
@@ -307,7 +310,7 @@ describe('AuthService', () => {
         json: () => Promise.resolve(errorResponse)
       });
 
-      await expect(AuthService.signOut(refreshToken))
+      await expect(AuthService.signOut())
         .rejects.toThrow('Invalid token');
     });
 
@@ -318,20 +321,21 @@ describe('AuthService', () => {
         json: () => Promise.resolve({})
       });
 
-      await expect(AuthService.signOut(refreshToken))
+      await expect(AuthService.signOut())
         .rejects.toThrow('Sign out failed! Status: 500');
     });
 
     it('should throw error when fetch fails during sign out', async () => {
       mockFetch.mockRejectedValueOnce(new Error('Connection failed'));
 
-      await expect(AuthService.signOut(refreshToken))
+      await expect(AuthService.signOut())
         .rejects.toThrow('Connection failed');
     });
   });
 
   describe('refreshToken', () => {
-    const refreshToken = 'refresh-token-456';
+    // FSEC-H1 Stage 2 — refreshToken takes no argument; the refresh token travels
+    // as an httpOnly cookie via credentials: 'include'. No Refresh-Token header.
     const mockSignInResponse: SignInResponse = {
       id: '1',
       email: 'john.doe@example.com',
@@ -339,27 +343,27 @@ describe('AuthService', () => {
       surname: 'Doe',
       role: 'PATIENT',
       status: 'ACTIVE',
-      accessToken: 'new-access-token-123',
-      refreshToken: 'new-refresh-token-456'
+      accessToken: 'new-access-token-123'
     };
 
-    it('should successfully refresh token', async () => {
+    it('should successfully refresh token using the cookie (credentials, no header)', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve(mockSignInResponse)
       });
 
-      const result = await AuthService.refreshToken(refreshToken);
+      const result = await AuthService.refreshToken();
 
       expect(mockFetch).toHaveBeenCalledWith(
         'http://localhost:8080/api/auth/refresh-token',
         expect.objectContaining({
           method: 'POST',
-          headers: expect.objectContaining({
-            'Refresh-Token': refreshToken
-          })
+          credentials: 'include'
         })
       );
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect((options.headers ?? {})['Refresh-Token']).toBeUndefined();
       expect(result).toEqual(mockSignInResponse);
     });
 
@@ -371,7 +375,7 @@ describe('AuthService', () => {
         json: () => Promise.resolve(errorResponse)
       });
 
-      await expect(AuthService.refreshToken(refreshToken))
+      await expect(AuthService.refreshToken())
         .rejects.toThrow('Token expired');
     });
 
@@ -382,19 +386,19 @@ describe('AuthService', () => {
         json: () => Promise.resolve({})
       });
 
-      await expect(AuthService.refreshToken(refreshToken))
+      await expect(AuthService.refreshToken())
         .rejects.toThrow('Token refresh failed');
     });
 
     it('should throw error when fetch fails during token refresh', async () => {
       mockFetch.mockRejectedValueOnce(new Error('Network error'));
 
-      await expect(AuthService.refreshToken(refreshToken))
+      await expect(AuthService.refreshToken())
         .rejects.toThrow('Network error');
     });
   });
 
-  describe('saveAuthData', () => {
+  describe('saveAuthData (FSEC-H1: no token persistence)', () => {
     const mockSignInResponse: SignInResponse = {
       id: '1',
       email: 'john.doe@example.com',
@@ -406,53 +410,20 @@ describe('AuthService', () => {
       refreshToken: 'refresh-token-456'
     };
 
-    it('should save auth data to localStorage', () => {
+    it('must NOT write any token to localStorage', () => {
       AuthService.saveAuthData(mockSignInResponse);
 
-      expect(localStorageMock.setItem).toHaveBeenCalledWith(
-        'authData',
-        JSON.stringify(mockSignInResponse)
-      );
+      // Floor test: no token payload persisted anywhere.
+      expect(localStorageMock.setItem).not.toHaveBeenCalled();
     });
   });
 
-  describe('getStoredAuthData', () => {
-    const mockSignInResponse: SignInResponse = {
-      id: '1',
-      email: 'john.doe@example.com',
-      name: 'John',
-      surname: 'Doe',
-      role: 'PATIENT',
-      status: 'ACTIVE',
-      accessToken: 'access-token-123',
-      refreshToken: 'refresh-token-456'
-    };
-
-    it('should return parsed auth data when data exists', () => {
-      localStorageMock.getItem.mockReturnValue(JSON.stringify(mockSignInResponse));
-
+  describe('getStoredAuthData (FSEC-H1: nothing persisted to read)', () => {
+    it('should always return null (no localStorage read of tokens)', () => {
       const result = AuthService.getStoredAuthData();
 
-      expect(localStorageMock.getItem).toHaveBeenCalledWith('authData');
-      expect(result).toEqual(mockSignInResponse);
-    });
-
-    it('should return null when no auth data exists', () => {
-      localStorageMock.getItem.mockReturnValue(null);
-
-      const result = AuthService.getStoredAuthData();
-
-      expect(localStorageMock.getItem).toHaveBeenCalledWith('authData');
       expect(result).toBeNull();
-    });
-
-    it('should return null when auth data is invalid JSON', () => {
-      localStorageMock.getItem.mockReturnValue('invalid-json');
-
-      const result = AuthService.getStoredAuthData();
-
-      expect(localStorageMock.getItem).toHaveBeenCalledWith('authData');
-      expect(result).toBeNull();
+      expect(localStorageMock.getItem).not.toHaveBeenCalled();
     });
   });
 
