@@ -1206,3 +1206,24 @@ describe('turnMachine - FBUG-H3: dead RESERVE_TURN flow removed', () => {
     actor.stop();
   });
 });
+
+describe('turnMachine - FBUG-L5: dead context fields removed', () => {
+  it('does not expose the dead loading flags in the initial context', () => {
+    const actor = createActor(turnMachine);
+    actor.start();
+    const context = actor.getSnapshot().context as unknown as Record<string, unknown>;
+    expect('isModifyingTurn' in context).toBe(false);
+    expect('isLoadingTurnDetails' in context).toBe(false);
+    actor.stop();
+  });
+
+  it('still exposes the live loading flags that ARE declared in the interface', () => {
+    const actor = createActor(turnMachine);
+    actor.start();
+    const context = actor.getSnapshot().context as unknown as Record<string, unknown>;
+    expect('isLoadingAvailableSlots' in context).toBe(true);
+    expect('isCancellingTurn' in context).toBe(true);
+    expect('isCreatingTurn' in context).toBe(true);
+    actor.stop();
+  });
+});

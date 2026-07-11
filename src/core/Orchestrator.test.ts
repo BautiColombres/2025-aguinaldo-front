@@ -298,4 +298,157 @@ describe('Orchestrator', () => {
       debugOrchestrator.destroy();
     });
   });
+
+  // FSEC-L1 — debug logging must never surface token-bearing events, and must be a
+  // no-op outside a DEV build.
+  describe('FSEC-L1 token redaction and production gate', () => {
+    it('redacts token fields from logged event payloads when debug is enabled', () => {
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const debugOrchestrator = new Orchestrator({ debug: true });
+
+      debugOrchestrator.registerMachine({
+        id: 'test-machine',
+        machine: mockMachine,
+        eventTypes: ['SET_AUTH'],
+      });
+      consoleSpy.mockClear();
+
+      const event = {
+        type: 'SET_AUTH',
+        accessToken: 'super-secret-access',
+        refreshToken: 'super-secret-refresh',
+        userId: 'u1',
+      };
+      debugOrchestrator.sendToMachine('test-machine', event);
+
+      const loggedCall = consoleSpy.mock.calls.find(
+        (call) => typeof call[0] === 'string' && call[0].includes('Sending event to machine')
+      );
+      expect(loggedCall).toBeDefined();
+
+      const payload = loggedCall![1] as Record<string, unknown>;
+      expect(payload.accessToken).toBe('[REDACTED]');
+      expect(payload.refreshToken).toBe('[REDACTED]');
+      expect(payload.userId).toBe('u1');
+
+      // The original event object must NOT be mutated by the redaction.
+      expect(event.accessToken).toBe('super-secret-access');
+      expect(event.refreshToken).toBe('super-secret-refresh');
+
+      consoleSpy.mockRestore();
+      debugOrchestrator.destroy();
+    });
+
+    it('redacts change-password-shaped fields (newPassword/confirmPassword) from logged payloads', () => {
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const debugOrchestrator = new Orchestrator({ debug: true });
+
+      debugOrchestrator.registerMachine({
+        id: 'test-machine',
+        machine: mockMachine,
+        eventTypes: ['CHANGE_PASSWORD'],
+      });
+      consoleSpy.mockClear();
+
+      const event = {
+        type: 'CHANGE_PASSWORD',
+        currentPassword: 'old-secret',
+        newPassword: 'new-secret',
+        confirmPassword: 'new-secret',
+        userId: 'u1',
+      };
+      debugOrchestrator.sendToMachine('test-machine', event);
+
+      const loggedCall = consoleSpy.mock.calls.find(
+        (call) => typeof call[0] === 'string' && call[0].includes('Sending event to machine')
+      );
+      expect(loggedCall).toBeDefined();
+
+      const payload = loggedCall![1] as Record<string, unknown>;
+      expect(payload.currentPassword).toBe('[REDACTED]');
+      expect(payload.newPassword).toBe('[REDACTED]');
+      expect(payload.confirmPassword).toBe('[REDACTED]');
+      expect(payload.userId).toBe('u1');
+
+      // Original event must not be mutated.
+      expect(event.newPassword).toBe('new-secret');
+      expect(event.confirmPassword).toBe('new-secret');
+
+      consoleSpy.mockRestore();
+      debugOrchestrator.destroy();
+    });
+
+    it('redacts snake_case credential fields (access_token/refresh_token) from logged payloads', () => {
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const debugOrchestrator = new Orchestrator({ debug: true });
+
+      debugOrchestrator.registerMachine({
+        id: 'test-machine',
+        machine: mockMachine,
+        eventTypes: ['SET_AUTH'],
+      });
+      consoleSpy.mockClear();
+
+      const event = {
+        type: 'SET_AUTH',
+        access_token: 'super-secret-access',
+        refresh_token: 'super-secret-refresh',
+        userId: 'u1',
+      };
+      debugOrchestrator.sendToMachine('test-machine', event);
+
+      const loggedCall = consoleSpy.mock.calls.find(
+        (call) => typeof call[0] === 'string' && call[0].includes('Sending event to machine')
+      );
+      expect(loggedCall).toBeDefined();
+
+      const payload = loggedCall![1] as Record<string, unknown>;
+      expect(payload.access_token).toBe('[REDACTED]');
+      expect(payload.refresh_token).toBe('[REDACTED]');
+      expect(payload.userId).toBe('u1');
+
+      consoleSpy.mockRestore();
+      debugOrchestrator.destroy();
+    });
+
+    it('routes emit() listener errors through the DEV-gated logger (no raw console.error in prod)', () => {
+      vi.stubEnv('DEV', false);
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const prodOrchestrator = new Orchestrator();
+      prodOrchestrator.subscribe('BOOM', () => {
+        throw new Error('listener blew up');
+      });
+
+      // Should not throw, and must not reach raw console.error in a non-DEV build.
+      expect(() => prodOrchestrator.emit('BOOM', { type: 'BOOM' })).not.toThrow();
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+
+      consoleErrorSpy.mockRestore();
+      prodOrchestrator.destroy();
+      vi.unstubAllEnvs();
+    });
+
+    it('does not log anything (even with debug:true) outside a DEV build', () => {
+      vi.stubEnv('DEV', false);
+      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+      const debugOrchestrator = new Orchestrator({ debug: true });
+      debugOrchestrator.registerMachine({
+        id: 'test-machine',
+        machine: mockMachine,
+        eventTypes: ['SET_AUTH'],
+      });
+      debugOrchestrator.sendToMachine('test-machine', {
+        type: 'SET_AUTH',
+        accessToken: 'super-secret-access',
+      });
+
+      expect(consoleSpy).not.toHaveBeenCalled();
+
+      consoleSpy.mockRestore();
+      debugOrchestrator.destroy();
+      vi.unstubAllEnvs();
+    });
+  });
 });

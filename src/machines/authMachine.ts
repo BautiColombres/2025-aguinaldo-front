@@ -120,6 +120,9 @@ export const authMachine = createMachine({
                 isAuthenticated: event.output.isAuthenticated
               })),
               ({ event }) => {
+                // FBUG-L2 — read the expired-session signal straight from the resolved
+                // event (event.output), never from context populated by the preceding
+                // assign. This keeps the snackbar independent of onDone action ordering.
                 // If we had auth data but token validation failed, show message and navigate
                 if (event.output.authData && !event.output.isAuthenticated) {
                   orchestrator.send({ type: "CLEAR_ACCESS_TOKEN" });

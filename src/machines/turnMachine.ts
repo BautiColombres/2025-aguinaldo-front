@@ -223,11 +223,12 @@ export const turnMachine = createMachine({
     isCreatingTurn: false,
     isCancellingTurn: false,
     cancellingTurnId: null,
-    
-    isModifyingTurn: false,
-    isLoadingTurnDetails: false,
+
+    // FBUG-L5 — removed dead context flags `isModifyingTurn` / `isLoadingTurnDetails`:
+    // they were assigned here but never declared in TurnMachineContext and were never
+    // set to true anywhere, so the UI branches reading them were permanently dead.
     isLoadingAvailableSlots: false,
-    
+
     error: null,
     cancelSuccess: null,
     modifyError: null,

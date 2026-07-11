@@ -1,4 +1,42 @@
 import { createActor, type AnyStateMachine, type AnyActor } from 'xstate';
+import { logger } from '../utils/logger';
+
+// FSEC-L1 — never let token-bearing event payloads reach the console, even in dev.
+// Any key matching a sensitive name is replaced before logging; the original event
+// object is left untouched (a redacted copy is produced).
+const REDACTED = '[REDACTED]';
+// FSEC-L1 — substring/pattern match (not exact) so that camelCase, snake_case and
+// prefixed/suffixed variants are all covered: newPassword, currentPassword,
+// confirmPassword, access_token, refresh_token, authorization, apiKey, etc.
+const SENSITIVE_KEY_PATTERNS = [
+  'token',
+  'password',
+  'secret',
+  'authorization',
+  'bearer',
+  'apikey',
+  'credential',
+  'jwt',
+];
+
+function isSensitiveKey(key: string): boolean {
+  const lower = key.toLowerCase();
+  return SENSITIVE_KEY_PATTERNS.some((pattern) => lower.includes(pattern));
+}
+
+function redactTokens(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactTokens);
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = isSensitiveKey(key) ? REDACTED : redactTokens(val);
+    }
+    return out;
+  }
+  return value;
+}
 
 type EventListener<T = any> = (event: T) => void;
 
@@ -28,7 +66,9 @@ export class Orchestrator {
   private debug: boolean = false;
 
   constructor(options?: { debug?: boolean }) {
-    this.debug = options?.debug || false;
+    // FSEC-L1 — debug logging is force-disabled outside a DEV build so token-bearing
+    // events can never be logged in production, regardless of the `debug` option.
+    this.debug = Boolean(options?.debug) && Boolean(import.meta.env.DEV);
   }
 
   registerMachine(registration: MachineRegistration): void {
@@ -36,7 +76,7 @@ export class Orchestrator {
 
     if (this.machines.has(id)) {
       if (this.debug) {
-        console.warn(`[Orchestrator] Machine with id "${id}" is already registered. Skipping registration.`);
+        logger.warn(`[Orchestrator] Machine with id "${id}" is already registered. Skipping registration.`);
       }
       return;
     }
@@ -54,7 +94,7 @@ export class Orchestrator {
     eventTypes.forEach(eventType => {
       const subscription = this.subscribe(eventType, (event) => {
         if (this.debug) {
-          console.log(`[Orchestrator] Sending event "${eventType}" to machine "${id}":`, event);
+          logger.log(`[Orchestrator] Sending event "${eventType}" to machine "${id}":`, redactTokens(event));
         }
         actor.send(event);
       });
@@ -73,7 +113,7 @@ export class Orchestrator {
     actor.start();
 
     if (this.debug) {
-      console.log(`[Orchestrator] Registered machine "${id}" with event types:`, eventTypes);
+      logger.log(`[Orchestrator] Registered machine "${id}" with event types:`, eventTypes);
     }
 
     this.emit('MACHINE_REGISTERED', { machineId: id, eventTypes });
@@ -93,7 +133,7 @@ export class Orchestrator {
     this.machines.delete(id);
 
     if (this.debug) {
-      console.log(`[Orchestrator] Unregistered machine "${id}"`);
+      logger.log(`[Orchestrator] Unregistered machine "${id}"`);
     }
 
     this.emit('MACHINE_UNREGISTERED', { machineId: id });
@@ -110,7 +150,7 @@ export class Orchestrator {
 
   send(event: any): void {
     if (this.debug) {
-      console.log(`[Orchestrator] Broadcasting event to all machines:`, event);
+      logger.log(`[Orchestrator] Broadcasting event to all machines:`, redactTokens(event));
     }
 
     this.emit(event.type, event);
@@ -123,7 +163,7 @@ export class Orchestrator {
     }
 
     if (this.debug) {
-      console.log(`[Orchestrator] Sending event to machine "${machineId}":`, event);
+      logger.log(`[Orchestrator] Sending event to machine "${machineId}":`, redactTokens(event));
     }
 
     machine.actor.send(event);
@@ -169,7 +209,7 @@ export class Orchestrator {
 
   emit<T = any>(eventType: string, event: T): void {
     if (this.debug) {
-      console.log(`[Orchestrator] Emitting event "${eventType}":`, event);
+      logger.log(`[Orchestrator] Emitting event "${eventType}":`, redactTokens(event));
     }
 
     const typeListeners = this.eventListeners.get(eventType);
@@ -178,7 +218,9 @@ export class Orchestrator {
         try {
           listener(event);
         } catch (error) {
-          console.error(`[Orchestrator] Error in event listener for ${eventType}:`, error);
+          // FSEC-L1 — route through the DEV-gated logger so listener errors never
+          // reach the raw console in a production build.
+          logger.error(`[Orchestrator] Error in event listener for ${eventType}:`, error);
         }
       });
     }
@@ -195,7 +237,7 @@ export class Orchestrator {
     this.eventListeners.clear();
 
     if (this.debug) {
-      console.log('[Orchestrator] Destroyed');
+      logger.log('[Orchestrator] Destroyed');
     }
   }
 }

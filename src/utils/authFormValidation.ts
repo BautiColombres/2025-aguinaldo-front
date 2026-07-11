@@ -1,6 +1,9 @@
 import { dayjsArgentina, nowArgentina } from './dateTimeUtils';
 import type { AuthMachineContext } from "../machines/authMachine";
 
+// FSEC-L2 — these form validations are client-side UX only. The backend re-validates
+// every field with @Valid (BSEC-M-1); it remains the source of truth for correctness
+// and security. Keep these checks (do not weaken them) but never treat them as the gate.
 
 export const validateField = (key: string, value: any, context: AuthMachineContext) => {
   if (context.mode === "login" && !["email", "password"].includes(key)) {

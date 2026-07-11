@@ -166,6 +166,30 @@ describe('authMachine', () => {
     });
   });
 
+  // FBUG-L2 — the session-expired snackbar must read its data from the resolved
+  // event (event.output), regardless of the order the onDone actions run in.
+  describe('checkingAuth expired session (FBUG-L2)', () => {
+    it('opens the session-expired snackbar from the event, independent of action ordering', async () => {
+      vi.mocked(checkStoredAuth).mockResolvedValue({
+        authData: { accessToken: 'token123', id: '1', role: 'PATIENT' },
+        isAuthenticated: false,
+      });
+
+      actor = createActor(authMachine);
+      actor.start();
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(mockOrchestrator.send).toHaveBeenCalledWith({
+        type: 'OPEN_SNACKBAR',
+        message: 'Sesión expirada. Por favor, vuelve a iniciar sesión.',
+        severity: 'warning',
+      });
+    });
+  });
+
   describe('authenticated state', () => {
     beforeEach(async () => {
       vi.mocked(checkStoredAuth).mockResolvedValue({

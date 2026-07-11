@@ -499,7 +499,10 @@ describe('uiMachine', () => {
       expect(snackbar.severity).toBe('info');
     });
 
-    it('should auto-close snackbar after 6 seconds', () => {
+    // FBUG-L4 — the machine no longer runs a hand-rolled auto-close timer; auto-hide
+    // is delegated to MUI's autoHideDuration in SnackbarAlert. The machine must NOT
+    // schedule a setTimeout that sends CLOSE_SNACKBAR.
+    it('should NOT schedule a machine-side auto-close timer (FBUG-L4)', () => {
       actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
       actor.start();
 
@@ -511,10 +514,10 @@ describe('uiMachine', () => {
 
       expect(actor.getSnapshot().context.snackbar.open).toBe(true);
 
-      // Fast-forward time by 6 seconds
+      // Fast-forward well past the old 6s window: no timer-driven CLOSE_SNACKBAR.
       vi.advanceTimersByTime(6000);
 
-      expect(mockOrchestrator.send).toHaveBeenCalledWith({ type: 'CLOSE_SNACKBAR' });
+      expect(mockOrchestrator.send).not.toHaveBeenCalledWith({ type: 'CLOSE_SNACKBAR' });
     });
 
     it('should replace previous snackbar message', () => {
@@ -805,7 +808,8 @@ describe('uiMachine', () => {
       expect(context.confirmDialog.open).toBe(true);
     });
 
-    it('should handle multiple snackbar messages with auto-close', () => {
+    // FBUG-L4 — rapid successive snackbars must not stack/leak machine timers.
+    it('should not stack machine timers across rapid snackbars (FBUG-L4)', () => {
       actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
       actor.start();
 
@@ -823,13 +827,11 @@ describe('uiMachine', () => {
         severity: 'success',
       });
 
-      // First message timer
-      vi.advanceTimersByTime(3000);
-      expect(mockOrchestrator.send).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(6000);
 
-      // Second message timer
-      vi.advanceTimersByTime(3000);
-      expect(mockOrchestrator.send).toHaveBeenCalledTimes(2);
+      // No hand-rolled timers => the machine never auto-sends CLOSE_SNACKBAR.
+      expect(mockOrchestrator.send).not.toHaveBeenCalledWith({ type: 'CLOSE_SNACKBAR' });
+      expect(actor.getSnapshot().context.snackbar.message).toBe('Second message');
     });
   });
 

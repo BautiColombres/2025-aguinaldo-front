@@ -160,19 +160,16 @@ export const uiMachine = createMachine({
           ],
         },
         OPEN_SNACKBAR: {
-          actions: [assign({
+          // FBUG-L4 — no hand-rolled auto-close timer here. The previous setTimeout
+          // was never cleared, so rapid successive snackbars stacked/leaked timers.
+          // Auto-hide is now owned by MUI's `autoHideDuration` in SnackbarAlert.
+          actions: assign({
             snackbar: ({ event }) => ({
               open: true,
               message: event.message,
               severity: event.severity,
             }),
           }),
-          () => {
-            setTimeout(() => {
-              orchestrator.send({ type: "CLOSE_SNACKBAR" });
-            }, 6000);
-          }
-        ],
         },
         CLOSE_SNACKBAR: {
           actions: [

@@ -25,6 +25,10 @@ const FILE_CONFIG = {
 
 export class StorageService {
 
+  // FSEC-L2 — this client-side file validation is a UX convenience ONLY. The backend
+  // is the source of truth: it independently sanitizes the filename (BSEC-H-2) and
+  // re-validates size/type/extension via @Valid (BSEC-M-1). Do NOT weaken these checks
+  // and never rely on them as the sole security gate.
   static validateFile(file: File): void {
     if (!file) {
       throw new Error('Archivo requerido');

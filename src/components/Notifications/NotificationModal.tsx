@@ -93,17 +93,15 @@ const NotificationModal: React.FC<NotificationModalProps> = ({ open, onClose }) 
     }
   };
 
-  const getSeverityIcon = (message: string) => {
-    const isWarning = message.toLowerCase().includes('rechazada') || 
-                     message.toLowerCase().includes('cancelado');
-    return isWarning ? <Warning color="warning" /> : <CheckCircle color="success" />;
-  };
+  // FBUG-L3 — derive severity from the notification's `type` enum, not by matching
+  // Spanish words in the free-text message (which breaks if the wording changes).
+  const WARNING_TYPES: NotificationResponse['type'][] = ['TURN_CANCELLED', 'MODIFY_REQUEST_REJECTED'];
 
-  const getSeverityColor = (message: string) => {
-    const isWarning = message.toLowerCase().includes('rechazada') || 
-                     message.toLowerCase().includes('cancelado');
-    return isWarning ? 'warning' : 'success';
-  };
+  const getSeverityColor = (type: NotificationResponse['type']): 'warning' | 'success' =>
+    WARNING_TYPES.includes(type) ? 'warning' : 'success';
+
+  const getSeverityIcon = (type: NotificationResponse['type']) =>
+    getSeverityColor(type) === 'warning' ? <Warning color="warning" /> : <CheckCircle color="success" />;
 
   return (
     <Dialog
@@ -289,7 +287,7 @@ const NotificationModal: React.FC<NotificationModalProps> = ({ open, onClose }) 
                         top: 0,
                         bottom: 0,
                         width: 4,
-                        backgroundColor: getSeverityColor(notification.message) === 'warning' ? '#f59e0b' : '#57cc99',
+                        backgroundColor: getSeverityColor(notification.type) === 'warning' ? '#f59e0b' : '#57cc99',
                       }
                     }}
                   >
@@ -299,12 +297,12 @@ const NotificationModal: React.FC<NotificationModalProps> = ({ open, onClose }) 
                         mt: 0.5,
                         width: 48,
                         height: 48,
-                        bgcolor: getSeverityColor(notification.message) === 'warning' 
+                        bgcolor: getSeverityColor(notification.type) === 'warning' 
                           ? 'rgba(245, 158, 11, 0.1)' 
                           : 'rgba(87, 204, 153, 0.1)',
-                        border: `2px solid ${getSeverityColor(notification.message) === 'warning' ? '#f59e0b' : '#57cc99'}`,
+                        border: `2px solid ${getSeverityColor(notification.type) === 'warning' ? '#f59e0b' : '#57cc99'}`,
                       }}>
-                        {getSeverityIcon(notification.message)}
+                        {getSeverityIcon(notification.type)}
                       </Avatar>
                       
                       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
@@ -316,9 +314,9 @@ const NotificationModal: React.FC<NotificationModalProps> = ({ open, onClose }) 
                             Nueva Notificación
                           </Typography>
                           <Chip 
-                            label={getSeverityColor(notification.message) === 'warning' ? 'Atención' : 'Confirmación'}
+                            label={getSeverityColor(notification.type) === 'warning' ? 'Atención' : 'Confirmación'}
                             size="small"
-                            color={getSeverityColor(notification.message) as any}
+                            color={getSeverityColor(notification.type) as any}
                             variant="filled"
                             sx={{
                               fontWeight: 600,
