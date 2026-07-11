@@ -1,6 +1,41 @@
 
+// FSEC-H2 — Resolve the API base URL with transport hardening.
+// Production (non-DEV) MUST provide an https:// VITE_API_BASE_URL; we fail loudly
+// otherwise instead of silently falling back to plaintext http. Only DEV may use
+// http://localhost / http://127.0.0.1 (and defaults to it when the var is unset).
+const resolveBaseUrl = (): string => {
+  const isDev = Boolean(import.meta.env.DEV);
+  const rawBaseUrl = import.meta.env.VITE_API_BASE_URL;
+  const baseUrl = typeof rawBaseUrl === 'string' ? rawBaseUrl.trim() : '';
+
+  const isLocalHttp =
+    baseUrl.startsWith('http://localhost') || baseUrl.startsWith('http://127.0.0.1');
+  const isHttps = baseUrl.startsWith('https://');
+
+  if (isDev) {
+    if (!baseUrl) {
+      return 'http://localhost:8080';
+    }
+    if (isHttps || isLocalHttp) {
+      return baseUrl;
+    }
+    throw new Error(
+      `FSEC-H2: VITE_API_BASE_URL must be https:// or http://localhost in DEV. Received: "${baseUrl}".`,
+    );
+  }
+
+  if (!isHttps) {
+    throw new Error(
+      'FSEC-H2: VITE_API_BASE_URL must be set to an https:// URL in production. ' +
+        'Refusing to fall back to an insecure http:// base URL.',
+    );
+  }
+
+  return baseUrl;
+};
+
 export const API_CONFIG = {
-  BASE_URL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080',
+  BASE_URL: resolveBaseUrl(),
 
   ENDPOINTS: {
     REGISTER_PATIENT: '/api/auth/register/patient',
@@ -10,7 +45,6 @@ export const API_CONFIG = {
     REFRESH_TOKEN: '/api/auth/refresh-token',
 
     CREATE_TURN: '/api/turns',
-    RESERVE_TURN: '/api/turns/reserve',
     GET_AVAILABLE_TURNS: '/api/turns/available',
     GET_MY_TURNS: '/api/turns/my-turns',
     GET_DOCTOR_TURNS: '/api/turns/doctor',
@@ -78,8 +112,13 @@ export const buildApiUrl = (endpoint: string): string => {
   return `${API_CONFIG.BASE_URL}${endpoint}`;
 };
 
+// FSEC-H1 — credentials: 'include' so the httpOnly refresh cookie (scoped to
+// /api/auth) travels on signin (to receive Set-Cookie), refresh-token, and
+// signout. Non-auth endpoints authenticate via the Bearer header; the cookie's
+// Path=/api/auth means it is simply not attached elsewhere.
 export const getDefaultFetchOptions = (): RequestInit => ({
   headers: API_CONFIG.DEFAULT_HEADERS,
+  credentials: 'include',
   signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
 });
 
@@ -88,14 +127,70 @@ export const getAuthenticatedFetchOptions = (accessToken: string): RequestInit =
     ...API_CONFIG.DEFAULT_HEADERS,
     'Authorization': `Bearer ${accessToken}`,
   },
+  credentials: 'include',
   signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
 });
 
-export const getAuthenticatedFetchOptionsWithRefreshToken = (accessToken: string, refreshToken: string): RequestInit => ({
-  headers: {
-    ...API_CONFIG.DEFAULT_HEADERS,
-    'Authorization': `Bearer ${accessToken}`,
-    'Refresh-Token': refreshToken,
-  },
-  signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
-});
+// FBUG-M6 — shared error classifier / mapper.
+// `AbortSignal.timeout` rejections (and manual aborts, 401s and network failures)
+// were previously handled ad-hoc — one machine only checked for 401, timeout/abort
+// rejections leaked raw/undefined text into the UI. This gives every machine one
+// place to classify a rejection and surface a localized message.
+export type ApiErrorKind = 'timeout' | 'unauthorized' | 'network' | 'unknown';
+
+export interface ClassifiedApiError {
+  kind: ApiErrorKind;
+  message: string;
+  status?: number;
+}
+
+export const API_ERROR_MESSAGES: Record<ApiErrorKind, string> = {
+  timeout:
+    'La solicitud tardó demasiado tiempo. Por favor, verificá tu conexión e intentá nuevamente.',
+  unauthorized: 'Tu sesión expiró. Por favor, iniciá sesión nuevamente.',
+  network: 'No se pudo conectar con el servidor. Verificá tu conexión a internet.',
+  unknown: 'Ocurrió un error inesperado. Por favor, intentá nuevamente.',
+};
+
+/**
+ * Classify an unknown rejection into a uniform, localized error.
+ *
+ * @param error The rejected value (Error, DOMException, string, ...).
+ * @param fallbackMessage Message used for the `unknown` kind when the error
+ *        carries no usable message (e.g. a non-Error rejection). Defaults to a
+ *        generic localized message.
+ */
+export const classifyApiError = (
+  error: unknown,
+  fallbackMessage: string = API_ERROR_MESSAGES.unknown,
+): ClassifiedApiError => {
+  // AbortSignal.timeout() rejects with a DOMException named 'TimeoutError';
+  // a manual AbortController.abort() rejects with 'AbortError'.
+  const name = (error as { name?: string } | null | undefined)?.name;
+  if (name === 'TimeoutError' || name === 'AbortError') {
+    return { kind: 'timeout', message: API_ERROR_MESSAGES.timeout };
+  }
+
+  if (error instanceof Error) {
+    const raw = error.message ?? '';
+    const lower = raw.toLowerCase();
+
+    if (raw.includes('401') || lower.includes('unauthorized')) {
+      return { kind: 'unauthorized', message: API_ERROR_MESSAGES.unauthorized, status: 401 };
+    }
+
+    // fetch() throws a TypeError ('Failed to fetch') on network failure.
+    if (
+      error instanceof TypeError ||
+      lower.includes('failed to fetch') ||
+      lower.includes('networkerror') ||
+      lower.includes('network request failed')
+    ) {
+      return { kind: 'network', message: API_ERROR_MESSAGES.network };
+    }
+
+    return { kind: 'unknown', message: raw || fallbackMessage };
+  }
+
+  return { kind: 'unknown', message: fallbackMessage };
+};

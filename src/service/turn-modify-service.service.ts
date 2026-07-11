@@ -1,4 +1,5 @@
 import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
+import { logger } from '../utils/logger';
 import type { TurnModifyRequest } from '../models/TurnModifyRequest';
 
 export interface TurnModifyCreateRequest {
@@ -22,7 +23,7 @@ export class TurnModifyService {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('[TurnModifyService] createModifyRequest - Error:', errorData);
+        logger.error('[TurnModifyService] createModifyRequest - Error:', errorData);
         throw new Error(
           errorData?.message ||
           errorData?.error ||
@@ -33,7 +34,7 @@ export class TurnModifyService {
       const result: TurnModifyRequest = await response.json();
       return result;
     } catch (error) {
-      console.error('[TurnModifyService] createModifyRequest - Exception:', error);
+      logger.error('[TurnModifyService] createModifyRequest - Exception:', error);
       throw error;
     }
   }
@@ -49,7 +50,7 @@ export class TurnModifyService {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        console.error('[TurnModifyService] getMyModifyRequests - Error:', errorData);
+        logger.error('[TurnModifyService] getMyModifyRequests - Error:', errorData);
         throw new Error(
           errorData?.message ||
           errorData?.error ||
@@ -60,7 +61,7 @@ export class TurnModifyService {
       const result: TurnModifyRequest[] = await  response.json();
       return result;
     } catch (error) {
-      console.error('[TurnModifyService] getMyModifyRequests - Exception:', error);
+      logger.error('[TurnModifyService] getMyModifyRequests - Exception:', error);
       throw error;
     }
   }

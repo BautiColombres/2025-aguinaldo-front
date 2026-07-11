@@ -1,4 +1,5 @@
 import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
+import { logger } from '../utils/logger';
 import type {
     PendingDoctor,
     DoctorApprovalResponse,
@@ -30,7 +31,7 @@ export class AdminService {
       const result: PendingDoctor[] = await response.json();
       return result;
     } catch (error) {
-      console.error('Failed to fetch pending doctors:', error);
+      logger.error('Failed to fetch pending doctors:', error);
       throw error;
     }
   }
@@ -57,7 +58,7 @@ export class AdminService {
       const result: DoctorApprovalResponse = await response.json();
       return result;
     } catch (error) {
-      console.error('Failed to approve doctor:', error);
+      logger.error('Failed to approve doctor:', error);
       throw error;
     }
   }
@@ -84,7 +85,7 @@ export class AdminService {
       const result: DoctorApprovalResponse = await response.json();
       return result;
     } catch (error) {
-      console.error('Failed to reject doctor:', error);
+      logger.error('Failed to reject doctor:', error);
       throw error;
     }
   }
@@ -111,7 +112,7 @@ export class AdminService {
       const result: AdminStats = await response.json();
       return result;
     } catch (error) {
-      console.error('Failed to fetch admin stats:', error);
+      logger.error('Failed to fetch admin stats:', error);
       // Return default values if there's an error
       return {
         patients: 0,
@@ -142,7 +143,7 @@ export class AdminService {
       const result = await response.json();
       return result;
     } catch (error) {
-      console.error('Failed to fetch admin ratings:', error);
+      logger.error('Failed to fetch admin ratings:', error);
       throw error;
     }
   }
@@ -168,7 +169,7 @@ export class AdminService {
       const result: string[] = await response.json();
       return result;
     } catch (error) {
-      console.error('Failed to fetch specialties:', error);
+      logger.error('Failed to fetch specialties:', error);
       throw error;
     }
   }

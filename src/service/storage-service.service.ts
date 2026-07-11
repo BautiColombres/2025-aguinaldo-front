@@ -1,4 +1,5 @@
 import { buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
+import { logger } from '../utils/logger';
 
 export interface UploadResponse {
   url: string;
@@ -24,6 +25,10 @@ const FILE_CONFIG = {
 
 export class StorageService {
 
+  // FSEC-L2 — this client-side file validation is a UX convenience ONLY. The backend
+  // is the source of truth: it independently sanitizes the filename (BSEC-H-2) and
+  // re-validates size/type/extension via @Valid (BSEC-M-1). Do NOT weaken these checks
+  // and never rely on them as the sole security gate.
   static validateFile(file: File): void {
     if (!file) {
       throw new Error('Archivo requerido');
@@ -90,7 +95,7 @@ export class StorageService {
 
       return await response.json();
     } catch (error) {
-      console.error('Turn file upload failed:', error);
+      logger.error('Turn file upload failed:', error);
       throw error;
     }
   }
@@ -108,7 +113,7 @@ export class StorageService {
         await this.handleApiError(response);
       }
     } catch (error) {
-      console.error('Turn file delete failed:', error);
+      logger.error('Turn file delete failed:', error);
       throw error;
     }
   }
@@ -126,7 +131,7 @@ export class StorageService {
         await this.handleApiError(response);
       }
     } catch (error) {
-      console.error('File delete failed:', error);
+      logger.error('File delete failed:', error);
       throw error;
     }
   }
@@ -147,7 +152,7 @@ export class StorageService {
       const result: UploadResponse = await response.json();
       return result.url;
     } catch (error) {
-      console.error('Get public URL failed:', error);
+      logger.error('Get public URL failed:', error);
       throw error;
     }
   }

@@ -1,4 +1,4 @@
-
+import { useRef, useState } from "react";
 import { useMachines } from "#/providers/MachineProvider";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
@@ -16,37 +16,57 @@ export default function ConfirmationModal() {
 
     const dialogData = uiState.context.confirmDialog;
 
-    const handleConfirm = () => {
-        const action = dialogData.action;
-        
-        if (action === 'cancel_turn' && dialogData.turnId) {
-            turnSend({ 
-                type: "CANCEL_TURN", 
-                turnId: dialogData.turnId 
-            });
-        } else if (action === 'complete_turn' && dialogData.turnId) {
-            turnSend({ 
-                type: "COMPLETE_TURN", 
-                turnId: dialogData.turnId 
-            });
-        } else if (action === 'no_show_turn' && dialogData.turnId) {
-            // For no-show, we use the no-show endpoint
-            turnSend({ 
-                type: "NO_SHOW_TURN", 
-                turnId: dialogData.turnId 
-            });
-        } else if (action === 'approve' && dialogData.requestId) {
-            approveModifyRequest(dialogData.requestId, user.accessToken!);
-        } else if (action === 'reject' && dialogData.requestId) {
-            rejectModifyRequest(dialogData.requestId, user.accessToken!);
-        } else if (action === 'delete_file' && dialogData.turnId) {
-            orchestrator.send({
-                type: "DELETE_TURN_FILE",
-                turnId: dialogData.turnId
-            });
+    // FBUG-M2 — prevent double-submit. `pendingRef` guards against synchronous
+    // re-entry (a second click before React re-renders); `pending` drives the
+    // disabled state on the confirm button. The dialog is only asked to close
+    // AFTER any async action resolves, so it stays open until the result is in.
+    const [pending, setPending] = useState(false);
+    const pendingRef = useRef(false);
+
+    const handleConfirm = async () => {
+        if (pendingRef.current) return;
+        pendingRef.current = true;
+        setPending(true);
+
+        try {
+            const action = dialogData.action;
+
+            if (action === 'cancel_turn' && dialogData.turnId) {
+                turnSend({
+                    type: "CANCEL_TURN",
+                    turnId: dialogData.turnId
+                });
+            } else if (action === 'complete_turn' && dialogData.turnId) {
+                turnSend({
+                    type: "COMPLETE_TURN",
+                    turnId: dialogData.turnId
+                });
+            } else if (action === 'no_show_turn' && dialogData.turnId) {
+                // For no-show, we use the no-show endpoint
+                turnSend({
+                    type: "NO_SHOW_TURN",
+                    turnId: dialogData.turnId
+                });
+            } else if (action === 'approve' && dialogData.requestId) {
+                // FBUG-M4 — guard the access token instead of a non-null assertion.
+                if (!user.accessToken) return;
+                await approveModifyRequest(dialogData.requestId, user.accessToken);
+            } else if (action === 'reject' && dialogData.requestId) {
+                // FBUG-M4 — guard the access token instead of a non-null assertion.
+                if (!user.accessToken) return;
+                await rejectModifyRequest(dialogData.requestId, user.accessToken);
+            } else if (action === 'delete_file' && dialogData.turnId) {
+                orchestrator.send({
+                    type: "DELETE_TURN_FILE",
+                    turnId: dialogData.turnId
+                });
+            }
+
+            uiSend({ type: "CLOSE_CONFIRMATION_DIALOG" });
+        } finally {
+            pendingRef.current = false;
+            setPending(false);
         }
-        
-        uiSend({ type: "CLOSE_CONFIRMATION_DIALOG" });
     };
 
   return (
@@ -59,9 +79,10 @@ export default function ConfirmationModal() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => uiSend({ type: "CLOSE_CONFIRMATION_DIALOG" })}>Cancelar</Button>
-          <Button 
+          <Button
             onClick={handleConfirm}
             color={dialogData.confirmButtonColor || 'primary'}
+            disabled={pending}
           >
             {dialogData.confirmButtonText || 'Confirmar'}
           </Button>

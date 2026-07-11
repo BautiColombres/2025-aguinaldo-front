@@ -1,4 +1,5 @@
 import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions, getDefaultFetchOptions } from '../../config/api';
+import { logger } from '../utils/logger';
 import type {
     RegisterRequestData,
     RegisterResponse,
@@ -40,7 +41,7 @@ export class AuthService {
       const result: RegisterResponse = await response.json();
       return result;
     } catch (error) {
-      console.error('Patient registration failed:', error);
+      logger.error('Patient registration failed:', error);
       throw error;
     }
   }
@@ -61,7 +62,7 @@ export class AuthService {
 
       return await response.json();
     } catch (error) {
-      console.error('Account verification failed:', error);
+      logger.error('Account verification failed:', error);
       throw error;
     }
   }
@@ -96,7 +97,7 @@ export class AuthService {
       const result: RegisterResponse = await response.json();
       return result;
     } catch (error) {
-      console.error('Doctor registration failed:', error);
+      logger.error('Doctor registration failed:', error);
       throw error;
     }
   }
@@ -124,84 +125,77 @@ export class AuthService {
       
       return result;
     } catch (error) {
-      console.error('Sign in failed:', error);
+      logger.error('Sign in failed:', error);
       throw error;
     }
   }
 
-  static async signOut(refreshToken: string): Promise<void> {
+  // FSEC-H1 Stage 2 — the refresh token is an httpOnly cookie (Path=/api/auth).
+  // signOut sends no token; credentials: 'include' carries the cookie, and the
+  // backend revokes + clears it. No Refresh-Token header.
+  static async signOut(): Promise<void> {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.SIGNOUT);
-    
+
     try {
       const response = await  fetch(url, {
         ...getDefaultFetchOptions(),
         method: 'POST',
-        headers: {
-          ...API_CONFIG.DEFAULT_HEADERS,
-          'Refresh-Token': refreshToken,
-        },
       });
 
       if (!response.ok) {
         const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
         throw new Error(
-          errorData?.message || 
+          errorData?.message ||
           errorData?.error ||
           `Sign out failed! Status: ${response.status}`
         );
       }
-      
+
     } catch (error) {
-      console.error('Sign out failed:', error);
+      logger.error('Sign out failed:', error);
       throw error;
     }
   }
 
-  static async refreshToken(refreshToken: string): Promise<SignInResponse> {
+  // FSEC-H1 Stage 2 — refresh reads the httpOnly cookie (credentials: 'include');
+  // no token argument, no Refresh-Token header. Returns a fresh access token.
+  static async refreshToken(): Promise<SignInResponse> {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.REFRESH_TOKEN);
-    
+
     try {
       const response = await fetch(url, {
         ...getDefaultFetchOptions(),
         method: 'POST',
-        headers: {
-          ...API_CONFIG.DEFAULT_HEADERS,
-          'Refresh-Token': refreshToken,
-        },
       });
 
       if (!response.ok) {
         const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
         throw new Error(
-          errorData?.message || 
+          errorData?.message ||
           errorData?.error ||
           'Token refresh failed'
         );
       }
 
       const result: SignInResponse = await response.json();
-      
+
       return result;
     } catch (error) {
-      console.error('Token refresh failed:', error);
+      logger.error('Token refresh failed:', error);
       throw error;
     }
   }
 
-  static saveAuthData(signInResponse: SignInResponse) {
-    localStorage.setItem('authData', JSON.stringify(signInResponse));
+  // FSEC-H1 Stage 2 — no token is ever persisted. The access token lives only in
+  // XState context; the refresh token lives only in the httpOnly cookie. Reload
+  // re-bootstraps everything through /api/auth/refresh-token. Kept as a no-op so
+  // the single write choke-point stays intact for callers.
+  static saveAuthData(_signInResponse: SignInResponse) {
+    // intentionally does nothing (no localStorage/sessionStorage token storage)
   }
 
+  // FSEC-H1 Stage 2 — nothing is persisted, so there is nothing to read back.
   static getStoredAuthData(): SignInResponse | null {
-    const storedData = localStorage.getItem('authData');
-    if (storedData) {
-      try {
-        return JSON.parse(storedData);
-      } catch (error) {
-        console.error('Error parsing stored auth data:', error);
-        return null;
-      }
-    }
     return null;
   }
 
@@ -233,7 +227,7 @@ export class AuthService {
         const result: ProfileResponse = await response.json();
         return result;
       } catch (error) {
-        console.error('Failed to fetch data profile:', error);
+        logger.error('Failed to fetch data profile:', error);
         throw error;
       }
     }
@@ -264,7 +258,7 @@ export class AuthService {
         const result: ProfileResponse = await response.json();
         return result;
       } catch (error) {
-        console.error("Failed to update profile:", error);
+        logger.error("Failed to update profile:", error);
         throw error;
       }
     }
@@ -280,7 +274,7 @@ export class AuthService {
 
         if (!response.ok) {
           const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
-          console.error('Error en desactivación:', errorData);
+          logger.error('Error en desactivación:', errorData);
           throw new Error(
             errorData?.message ||
             errorData?.error ||
@@ -291,7 +285,7 @@ export class AuthService {
         // Clear auth data immediately after successful deactivation
         this.clearAuthData();
       } catch (error) {
-        console.error("Failed to deactivate account:", error);
+        logger.error("Failed to deactivate account:", error);
         throw error;
       }
     }

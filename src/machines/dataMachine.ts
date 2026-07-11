@@ -3,6 +3,7 @@ import { loadDoctors, loadPendingDoctors, loadAdminStats, loadAvailableTurns, lo
 import { loadDoctorPatients, loadDoctorAvailability } from "../utils/MachineUtils/doctorMachineUtils";
 import { loadCombinedBadgeData } from "../utils/MachineUtils/badgeMachineUtils";
 import { orchestrator } from "#/core/Orchestrator";
+import { classifyApiError } from "../../config/api";
 import type { PendingDoctor, AdminStats } from "../models/Admin";
 import type { Doctor } from "../models/Turn";
 import { UI_MACHINE_ID } from "./uiMachine";
@@ -532,11 +533,14 @@ export const dataMachine = createMachine({
         ],
         onError: {
           target: "idle",
+          // FBUG-M6 — consume the shared classifier so timeout/abort, 401 and
+          // network rejections are surfaced uniformly with a localized message,
+          // instead of only handling 401 and leaking raw text for the rest.
           actions: [
             assign({
               errors: ({ context, event }) => ({
                 ...context.errors,
-                doctors: event.error instanceof Error ? event.error.message : "Error al cargar doctores"
+                doctors: classifyApiError(event.error, "Error al cargar doctores").message
               }),
               loading: ({ context }) => ({
                 ...context.loading,
@@ -544,13 +548,13 @@ export const dataMachine = createMachine({
               })
             }),
             ({ event }) => {
-              if (event.error instanceof Error && (event.error.message.includes('401') || event.error.message.toLowerCase().includes('unauthorized'))) {
+              const classified = classifyApiError(event.error, "Error al cargar doctores");
+              if (classified.kind === 'unauthorized') {
                 orchestrator.sendToMachine(AUTH_MACHINE_ID, { type: "LOGOUT" });
               }
-              const errorMessage = event.error instanceof Error ? event.error.message : "Error al cargar doctores";
               orchestrator.sendToMachine(UI_MACHINE_ID, {
                 type: "OPEN_SNACKBAR",
-                message: errorMessage,
+                message: classified.message,
                 severity: "error"
               });
             }

@@ -1,4 +1,5 @@
 import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
+import { logger } from '../utils/logger';
 import { orchestrator } from '#/core/Orchestrator';
 import dayjs from '#/utils/dayjs.config';
 import type {
@@ -34,7 +35,7 @@ export class TurnService {
       
       if (!response.ok) {
         const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
-        console.error('[TurnService] getMyModifyRequests - Error:', errorData);
+        logger.error('[TurnService] getMyModifyRequests - Error:', errorData);
         throw new Error(
           errorData?.message || 
           errorData?.error ||
@@ -44,7 +45,7 @@ export class TurnService {
       const result: TurnModifyRequest[] = await response.json();
       return result;
     } catch (error) {
-      console.error('[TurnService] getMyModifyRequests - Exception:', error);
+      logger.error('[TurnService] getMyModifyRequests - Exception:', error);
       throw error;
     }
   }
@@ -70,7 +71,7 @@ export class TurnService {
       const result: TurnModifyRequest[] = await response.json();
       return result;
     } catch (error) {
-      console.error('[TurnService] getDoctorModifyRequests - Exception:', error);
+      logger.error('[TurnService] getDoctorModifyRequests - Exception:', error);
       throw error;
     }
   }
@@ -175,7 +176,7 @@ export class TurnService {
       });
       if (!response.ok) {
         const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
-        console.error('[TurnService] getMyTurns - Error:', errorData);
+        logger.error('[TurnService] getMyTurns - Error:', errorData);
         throw new Error(
           errorData?.message || 
           errorData?.error ||
@@ -185,7 +186,7 @@ export class TurnService {
       const result: TurnResponse[] = await response.json();
       return result;
     } catch (error) {
-        console.error('[TurnService] getMyTurns - Exception:', error);
+        logger.error('[TurnService] getMyTurns - Exception:', error);
       throw error;
     }
   }
@@ -398,7 +399,7 @@ export class TurnService {
 
       if (!response.ok) {
         const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
-        console.error('[TurnService] createRating - Error:', errorData);
+        logger.error('[TurnService] createRating - Error:', errorData);
         throw new Error(
           errorData?.message || 
           errorData?.error ||
@@ -409,7 +410,7 @@ export class TurnService {
       const result = await response.json();
       return result;
     } catch (error) {
-      console.error('[TurnService] createRating - Exception:', error);
+      logger.error('[TurnService] createRating - Exception:', error);
       throw error;
     }
   }
@@ -431,7 +432,7 @@ export class TurnService {
 
       if (!response.ok) {
         const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
-        console.error('[TurnService] getRatingSubcategories - Error:', errorData);
+        logger.error('[TurnService] getRatingSubcategories - Error:', errorData);
         throw new Error(
           errorData?.message || 
           errorData?.error ||
@@ -442,7 +443,7 @@ export class TurnService {
       const result: string[] = await response.json();
       return result;
     } catch (error) {
-      console.error('[TurnService] getRatingSubcategories - Exception:', error);
+      logger.error('[TurnService] getRatingSubcategories - Exception:', error);
       throw error;
     }
   }
@@ -467,14 +468,14 @@ export class TurnService {
 
       if (!response.ok) {
         const errorData: any = await response.json().catch(() => ({}));
-        console.error('[TurnService] getRatedSubcategoryCounts - Error:', errorData);
+        logger.error('[TurnService] getRatedSubcategoryCounts - Error:', errorData);
         throw new Error(errorData?.message || errorData?.error || `Failed to fetch subcategory counts! Status: ${response.status}`);
       }
 
       const result: { subcategory: string | null; count: number }[] = await response.json();
       return result;
     } catch (error) {
-      console.error('[TurnService] getRatedSubcategoryCounts - Exception:', error);
+      logger.error('[TurnService] getRatedSubcategoryCounts - Exception:', error);
       throw error;
     }
   }

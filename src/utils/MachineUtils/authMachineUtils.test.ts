@@ -22,91 +22,48 @@ describe('authMachineUtils', () => {
     global.fetch = vi.fn()
   })
 
+  // FSEC-H1 Stage 2 — bootstrap no longer reads localStorage. The access token
+  // is gone after reload, so checkStoredAuth re-mints it via the cookie-based
+  // refresh-token endpoint (AuthService.refreshToken(), credentials: 'include').
   describe('checkStoredAuth', () => {
-    it('should return authenticated when tokens exist and are valid', async () => {
-      const mockAuthData = {
-        accessToken: 'access-token',
-        refreshToken: 'refresh-token'
+    it('should return authenticated with the fresh auth data when refresh succeeds', async () => {
+      const refreshed = {
+        id: '1',
+        role: 'PATIENT',
+        status: 'ACTIVE',
+        accessToken: 'fresh-access-token'
       }
-      ;(AuthService.getStoredAuthData as Mock).mockReturnValue(mockAuthData)
-      
-      // Mock fetch for token validation
-      ;(global.fetch as Mock).mockResolvedValue({
-        ok: true
-      })
+      ;(AuthService.refreshToken as Mock).mockResolvedValue(refreshed)
 
       const result = await checkStoredAuth()
 
-      expect(result.authData).toEqual(mockAuthData)
+      expect(AuthService.refreshToken).toHaveBeenCalledWith()
+      expect(result.authData).toEqual(refreshed)
       expect(result.isAuthenticated).toBe(true)
-      expect(AuthService.getStoredAuthData).toHaveBeenCalled()
     })
 
-    it('should return not authenticated when access token is missing', async () => {
-      const mockAuthData = {
-        refreshToken: 'refresh-token'
-      }
-      ;(AuthService.getStoredAuthData as Mock).mockReturnValue(mockAuthData)
+    it('should not read stored auth data from localStorage', async () => {
+      ;(AuthService.refreshToken as Mock).mockResolvedValue({ accessToken: 'fresh' })
+
+      await checkStoredAuth()
+
+      expect(AuthService.getStoredAuthData).not.toHaveBeenCalled()
+    })
+
+    it('should return not authenticated when refresh returns no access token', async () => {
+      ;(AuthService.refreshToken as Mock).mockResolvedValue({})
 
       const result = await checkStoredAuth()
 
-      expect(result.authData).toEqual(mockAuthData)
       expect(result.isAuthenticated).toBe(false)
     })
 
-    it('should return not authenticated when refresh token is missing', async () => {
-      const mockAuthData = {
-        accessToken: 'access-token'
-      }
-      ;(AuthService.getStoredAuthData as Mock).mockReturnValue(mockAuthData)
-
-      const result = await checkStoredAuth()
-
-      expect(result.authData).toEqual(mockAuthData)
-      expect(result.isAuthenticated).toBe(false)
-    })
-
-    it('should return not authenticated when no auth data exists', async () => {
-      ;(AuthService.getStoredAuthData as Mock).mockReturnValue(null)
+    it('should return not authenticated when refresh throws (401 / missing cookie)', async () => {
+      ;(AuthService.refreshToken as Mock).mockRejectedValue(new Error('Token refresh failed'))
 
       const result = await checkStoredAuth()
 
       expect(result.authData).toBeNull()
-      expect(result.isAuthenticated).toBe(false)
-    })
-
-    it('should return not authenticated when token validation fails', async () => {
-      const mockAuthData = {
-        accessToken: 'invalid-token',
-        refreshToken: 'refresh-token'
-      }
-      ;(AuthService.getStoredAuthData as Mock).mockReturnValue(mockAuthData)
-      
-      // Mock fetch for failed token validation
-      ;(global.fetch as Mock).mockResolvedValue({
-        ok: false,
-        status: 401
-      })
-
-      const result = await checkStoredAuth()
-
-      expect(result.authData).toEqual(mockAuthData)
-      expect(result.isAuthenticated).toBe(false)
-    })
-
-    it('should return not authenticated when token validation throws an error', async () => {
-      const mockAuthData = {
-        accessToken: 'access-token',
-        refreshToken: 'refresh-token'
-      }
-      ;(AuthService.getStoredAuthData as Mock).mockReturnValue(mockAuthData)
-      
-      // Mock fetch to throw an error
-      ;(global.fetch as Mock).mockRejectedValue(new Error('Network error'))
-
-      const result = await checkStoredAuth()
-
-      expect(result.authData).toEqual(mockAuthData)
       expect(result.isAuthenticated).toBe(false)
     })
   })
@@ -241,50 +198,35 @@ describe('authMachineUtils', () => {
     })
   })
 
+  // FSEC-H1 Stage 2 — logout calls the cookie-based signOut() with no argument;
+  // the backend clears the httpOnly cookie. Local legacy keys are still cleared.
   describe('logoutUser', () => {
-    it('should successfully logout when signOut succeeds', async () => {
-      const mockAuthData = { refreshToken: 'refresh-token' }
-      ;(AuthService.getStoredAuthData as Mock).mockReturnValue(mockAuthData)
+    it('should call signOut() with no argument and clear local data', async () => {
       ;(AuthService.signOut as Mock).mockResolvedValue(undefined)
 
       const result = await logoutUser()
 
-      expect(AuthService.signOut).toHaveBeenCalledWith('refresh-token')
+      expect(AuthService.signOut).toHaveBeenCalledWith()
       expect(AuthService.clearAuthData).toHaveBeenCalled()
       expect(result).toBe(true)
     })
 
-    it('should successfully logout when signOut fails but clear local data', async () => {
-      const mockAuthData = { refreshToken: 'refresh-token' }
-      ;(AuthService.getStoredAuthData as Mock).mockReturnValue(mockAuthData)
+    it('should still clear local data when signOut fails', async () => {
       ;(AuthService.signOut as Mock).mockRejectedValue(new Error('API error'))
 
       const result = await logoutUser()
 
-      expect(AuthService.signOut).toHaveBeenCalledWith('refresh-token')
+      expect(AuthService.signOut).toHaveBeenCalledWith()
       expect(AuthService.clearAuthData).toHaveBeenCalled()
       expect(result).toBe(true)
     })
 
-    it('should successfully logout when no refresh token exists', async () => {
-      ;(AuthService.getStoredAuthData as Mock).mockReturnValue(null)
+    it('should not read the refresh token from localStorage', async () => {
+      ;(AuthService.signOut as Mock).mockResolvedValue(undefined)
 
-      const result = await logoutUser()
+      await logoutUser()
 
-      expect(AuthService.signOut).not.toHaveBeenCalled()
-      expect(AuthService.clearAuthData).toHaveBeenCalled()
-      expect(result).toBe(true)
-    })
-
-    it('should successfully logout when auth data has no refresh token', async () => {
-      const mockAuthData = { accessToken: 'access-token' }
-      ;(AuthService.getStoredAuthData as Mock).mockReturnValue(mockAuthData)
-
-      const result = await logoutUser()
-
-      expect(AuthService.signOut).not.toHaveBeenCalled()
-      expect(AuthService.clearAuthData).toHaveBeenCalled()
-      expect(result).toBe(true)
+      expect(AuthService.getStoredAuthData).not.toHaveBeenCalled()
     })
   })
 })

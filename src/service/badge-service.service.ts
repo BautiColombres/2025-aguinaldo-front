@@ -1,4 +1,5 @@
 import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
+import { logger } from '../utils/logger';
 import type {
   Badge,
   BadgeProgress
@@ -48,7 +49,7 @@ export class BadgeService {
         progress: progress
       };
     } catch (error) {
-      console.error('Failed to fetch combined badge data:', error);
+      logger.error('Failed to fetch combined badge data:', error);
       throw error;
     }
   }
@@ -74,7 +75,7 @@ export class BadgeService {
         );
       }
     } catch (error) {
-      console.error('[FRONTEND_BADGE_EVALUATION] Error evaluating badges:', error);
+      logger.error('[FRONTEND_BADGE_EVALUATION] Error evaluating badges:', error);
       throw error;
     }
   }

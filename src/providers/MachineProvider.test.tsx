@@ -277,6 +277,21 @@ describe('MachineProvider', () => {
     expect(useStateMachine).toHaveBeenCalledWith('notification-machine');
   });
 
+  // FBUG-H1: doctorMachine must be registered exactly once (a duplicate
+  // registerMachine block previously registered it twice).
+  it('should register doctorMachine exactly once (no duplicate registration)', async () => {
+    vi.resetModules();
+    const { orchestrator } = await import('../core/Orchestrator');
+    (orchestrator.registerMachine as any).mockClear();
+
+    await import('./MachineProvider');
+
+    const doctorRegistrations = (orchestrator.registerMachine as any).mock.calls.filter(
+      (call: any[]) => call[0]?.id === 'doctor-machine'
+    );
+    expect(doctorRegistrations).toHaveLength(1);
+  });
+
   it('should provide the correct machine instances structure', () => {
     let capturedContext: any = null;
 

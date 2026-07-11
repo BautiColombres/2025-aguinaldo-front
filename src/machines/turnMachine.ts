@@ -7,7 +7,7 @@ import type { Doctor, TurnResponse } from "../models/Turn";
 import { DATA_MACHINE_ID } from "./dataMachine";
 import { UI_MACHINE_ID } from "./uiMachine";
 import { TurnService } from '../service/turn-service.service';
-import { TurnModifyCreateRequest, TurnModifyService } from "#/service/turn-modify-service.service";
+import { TurnModifyService } from "#/service/turn-modify-service.service";
 
 export const TURN_MACHINE_ID = "turn";
 export const TURN_MACHINE_EVENT_TYPES = [
@@ -18,7 +18,6 @@ export const TURN_MACHINE_EVENT_TYPES = [
   "RESET_SHOW_TURNS",
   "DATA_LOADED",
   "LOADING",
-  "RESERVE_TURN",
   "CREATE_TURN",
   "CANCEL_TURN",
   "COMPLETE_TURN",
@@ -39,11 +38,9 @@ export interface TurnMachineContext {
   myTurns: TurnResponse[];
   isLoadingMyTurns: boolean;
   isCreatingTurn: boolean;
-  isReservingTurn: boolean;
   isCancellingTurn: boolean;
   cancellingTurnId: string | null;
   error: string | null;
-  reserveError: string | null;
   cancelSuccess: string | null;
 
   takeTurn: {
@@ -90,7 +87,6 @@ export type TurnMachineEvent =
   | { type: "RESET_SHOW_TURNS" }
   | { type: "DATA_LOADED" }
   | { type: "LOADING" }
-  | { type: "RESERVE_TURN"; turnId: string }
   | { type: "CREATE_TURN" }
   | { type: "CANCEL_TURN"; turnId: string }
   | { type: "COMPLETE_TURN"; turnId: string }
@@ -225,16 +221,15 @@ export const turnMachine = createMachine({
     isLoadingMyTurns: true,
     
     isCreatingTurn: false,
-    isReservingTurn: false,
     isCancellingTurn: false,
     cancellingTurnId: null,
-    
-    isModifyingTurn: false,
-    isLoadingTurnDetails: false,
+
+    // FBUG-L5 — removed dead context flags `isModifyingTurn` / `isLoadingTurnDetails`:
+    // they were assigned here but never declared in TurnMachineContext and were never
+    // set to true anywhere, so the UI branches reading them were permanently dead.
     isLoadingAvailableSlots: false,
-    
+
     error: null,
-    reserveError: null,
     cancelSuccess: null,
     modifyError: null,
     
@@ -499,23 +494,33 @@ export const turnMachine = createMachine({
         },
         submittingModifyRequest: {
           invoke: {
-            src: fromPromise(async ({ input }: { input: TurnModifyCreateRequest & { accessToken: string } }) => {
+            // FBUG-H2: validation lives INSIDE the actor body, not in `input`.
+            // A throw in `input` propagates synchronously at actor spawn and can
+            // fault the parent. Here an invalid selection rejects the promise and
+            // is handled by onError, keeping the machine alive.
+            src: fromPromise(async ({ input }: { input: { turnId: string | null; selectedDate: Dayjs | null; selectedTime: string | null; accessToken: string | null } }) => {
+              const { turnId, selectedDate, selectedTime, accessToken } = input;
+
+              if (!selectedDate || !selectedTime) {
+                throw new Error("Fecha y hora deben estar seleccionadas");
+              }
+
+              if (typeof selectedTime !== 'string' || !selectedTime.includes('T') || !selectedTime.split('T')[1]) {
+                throw new Error("Formato de hora inválido");
+              }
+
+              const timePart = selectedTime.split('T')[1];
+              const newScheduledAt = `${selectedDate.format('YYYY-MM-DD')}T${timePart}`;
+
               return await TurnModifyService.createModifyRequest({
-                turnId: input.turnId,
-                newScheduledAt: input.newScheduledAt
-              }, input.accessToken);
+                turnId: turnId!,
+                newScheduledAt
+              }, accessToken!);
             }),
             input: ({ context }: any) => ({
-              turnId: context.modifyTurn?.turnId!,
-              newScheduledAt: (() => {
-                if (!context.modifyTurn?.selectedDate || !context.modifyTurn?.selectedTime) {
-                  throw new Error("Fecha y hora deben estar seleccionadas");
-                }
-
-                const timePart = context.modifyTurn.selectedTime.split('T')[1];
-                const dateTimeString = `${context.modifyTurn.selectedDate.format('YYYY-MM-DD')}T${timePart}`;
-                return dateTimeString;
-              })(),
+              turnId: context.modifyTurn?.turnId ?? null,
+              selectedDate: context.modifyTurn?.selectedDate ?? null,
+              selectedTime: context.modifyTurn?.selectedTime ?? null,
               accessToken: (() => {
                 try {
                   const dataSnapshot = orchestrator.getSnapshot(DATA_MACHINE_ID);

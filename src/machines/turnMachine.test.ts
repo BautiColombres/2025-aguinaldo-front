@@ -37,7 +37,7 @@ vi.mock('../utils/MachineUtils/turnMachineUtils', () => ({
   loadAvailableSlots: vi.fn(),
 }));
 
-import { turnMachine } from './turnMachine';
+import { turnMachine, TURN_MACHINE_EVENT_TYPES } from './turnMachine';
 import { orchestrator } from '#/core/Orchestrator';
 import { TurnService } from '../service/turn-service.service';
 import { TurnModifyService } from '../service/turn-modify-service.service';
@@ -929,6 +929,135 @@ describe('turnMachine', () => {
 
       (window as any).location = originalLocation;
     });
+
+    // FBUG-H2: validation must happen inside the fromPromise body, not in the
+    // actor `input` builder. A null selectedTime must NOT throw synchronously and
+    // crash the parent actor; it must surface a handled error and keep the actor alive.
+    it('should not crash the actor when selectedTime is null (validation in actor body)', async () => {
+      mockTurnService.getAvailableDates.mockResolvedValue(mockAvailableDates);
+
+      mockOrchestrator.getSnapshot.mockImplementation((machineId: string) => {
+        if (machineId === 'data') {
+          return {
+            context: {
+              doctors: [mockDoctor],
+              availableTurns: mockAvailableSlots,
+              myTurns: [mockTurn],
+              accessToken: 'token-123',
+              userId: 'patient-1',
+            }
+          };
+        }
+        return { context: { authResponse: { id: 'patient-1' } } };
+      });
+
+      const originalLocation = window.location;
+      delete (window as any).location;
+      window.location = {
+        ...originalLocation,
+        href: 'http://localhost/patient/modify-turn?turnId=turn-1',
+      } as any;
+
+      actor = createActor(turnMachine);
+      actor.start();
+
+      actor.send({ type: 'DATA_LOADED' });
+      actor.send({ type: 'NAVIGATE', to: '/patient/modify-turn?turnId=turn-1' });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value.modifyTurn).toBe('modifying');
+      });
+
+      actor.send({
+        type: 'UPDATE_FORM',
+        path: ['modifyTurn', 'selectedDate'],
+        value: dayjs('2025-10-16'),
+      });
+      // No time selected.
+      actor.send({
+        type: 'UPDATE_FORM',
+        path: ['modifyTurn', 'selectedTime'],
+        value: null,
+      });
+
+      actor.send({ type: 'SUBMIT_MODIFY_REQUEST' });
+
+      // The actor must NOT crash: it surfaces a handled error and stays alive
+      // (status 'active'), rather than the parent faulting from a throw in `input`.
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().context.modifyError).toBeTruthy();
+      });
+      expect(actor.getSnapshot().status).toBe('active');
+      expect(mockTurnModifyService.createModifyRequest).not.toHaveBeenCalled();
+
+      // Still responsive to further events (proves the actor is alive).
+      expect(() => actor.send({ type: 'DATA_LOADED' })).not.toThrow();
+      expect(actor.getSnapshot().status).toBe('active');
+
+      (window as any).location = originalLocation;
+    });
+
+    // FBUG-H2: selectedTime format must be validated before split('T'); an invalid
+    // format must reject gracefully (onError) and never reach the service.
+    it('should reject gracefully when selectedTime has an invalid format', async () => {
+      mockTurnService.getAvailableDates.mockResolvedValue(mockAvailableDates);
+
+      mockOrchestrator.getSnapshot.mockImplementation((machineId: string) => {
+        if (machineId === 'data') {
+          return {
+            context: {
+              doctors: [mockDoctor],
+              availableTurns: mockAvailableSlots,
+              myTurns: [mockTurn],
+              accessToken: 'token-123',
+              userId: 'patient-1',
+            }
+          };
+        }
+        return { context: { authResponse: { id: 'patient-1' } } };
+      });
+
+      const originalLocation = window.location;
+      delete (window as any).location;
+      window.location = {
+        ...originalLocation,
+        href: 'http://localhost/patient/modify-turn?turnId=turn-1',
+      } as any;
+
+      actor = createActor(turnMachine);
+      actor.start();
+
+      actor.send({ type: 'DATA_LOADED' });
+      actor.send({ type: 'NAVIGATE', to: '/patient/modify-turn?turnId=turn-1' });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value.modifyTurn).toBe('modifying');
+      });
+
+      actor.send({
+        type: 'UPDATE_FORM',
+        path: ['modifyTurn', 'selectedDate'],
+        value: dayjs('2025-10-16'),
+      });
+      // Invalid time format: no 'T' separator to split on.
+      actor.send({
+        type: 'UPDATE_FORM',
+        path: ['modifyTurn', 'selectedTime'],
+        value: 'not-a-valid-time',
+      });
+
+      actor.send({ type: 'SUBMIT_MODIFY_REQUEST' });
+
+      // Invalid format rejects gracefully via onError; the service is never called
+      // and the actor stays alive.
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().context.modifyError).toBeTruthy();
+      });
+      expect(actor.getSnapshot().status).toBe('active');
+      expect(mockTurnModifyService.createModifyRequest).not.toHaveBeenCalled();
+
+      (window as any).location = originalLocation;
+    });
   });
 
   describe('Parallel State Behavior', () => {
@@ -1046,5 +1175,55 @@ describe('turnMachine', () => {
       expect(actor.getSnapshot().context.takeTurn.motive).toBe('Important reason');
       expect(actor.getSnapshot().context.takeTurn.doctorId).toBe('doctor-1');
     });
+  });
+});
+
+describe('turnMachine - FBUG-H3: dead RESERVE_TURN flow removed', () => {
+  it('does not declare RESERVE_TURN in the routed event types', () => {
+    expect(TURN_MACHINE_EVENT_TYPES).not.toContain('RESERVE_TURN');
+  });
+
+  it('does not expose the dead reserve context fields', () => {
+    const actor = createActor(turnMachine);
+    actor.start();
+    const context = actor.getSnapshot().context as unknown as Record<string, unknown>;
+    expect('reserveError' in context).toBe(false);
+    expect('isReservingTurn' in context).toBe(false);
+    actor.stop();
+  });
+
+  it('ignores a RESERVE_TURN event without transitioning or faulting the actor', () => {
+    const actor = createActor(turnMachine);
+    actor.start();
+    const before = actor.getSnapshot().value;
+
+    // Casting through unknown: RESERVE_TURN is no longer part of the event union.
+    actor.send({ type: 'RESERVE_TURN', turnId: 'turn-1' } as unknown as never);
+
+    const snapshot = actor.getSnapshot();
+    expect(snapshot.status).toBe('active');
+    expect(snapshot.value).toEqual(before);
+    actor.stop();
+  });
+});
+
+describe('turnMachine - FBUG-L5: dead context fields removed', () => {
+  it('does not expose the dead loading flags in the initial context', () => {
+    const actor = createActor(turnMachine);
+    actor.start();
+    const context = actor.getSnapshot().context as unknown as Record<string, unknown>;
+    expect('isModifyingTurn' in context).toBe(false);
+    expect('isLoadingTurnDetails' in context).toBe(false);
+    actor.stop();
+  });
+
+  it('still exposes the live loading flags that ARE declared in the interface', () => {
+    const actor = createActor(turnMachine);
+    actor.start();
+    const context = actor.getSnapshot().context as unknown as Record<string, unknown>;
+    expect('isLoadingAvailableSlots' in context).toBe(true);
+    expect('isCancellingTurn' in context).toBe(true);
+    expect('isCreatingTurn' in context).toBe(true);
+    actor.stop();
   });
 });

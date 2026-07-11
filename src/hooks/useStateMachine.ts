@@ -33,16 +33,17 @@ export function useStateMachine(machineId: string): UseStateMachineReturn {
   }, [machineId]);
 
   React.useEffect(() => {
-    updateSnapshot();
-
     const machine = orchestrator.getMachine(machineId);
     if (!machine) {
       console.warn(`Machine with id "${machineId}" is not registered`);
       return;
     }
 
-    const initialSnapshot = machine.actor.getSnapshot();
-    setSnapshot(initialSnapshot);
+    // FBUG-L1 — set the initial snapshot exactly once, then let a single
+    // subscription drive subsequent updates. Previously the snapshot was set up
+    // to 3x on mount (updateSnapshot + actor.getSnapshot + the subscription's
+    // initial emit), causing redundant renders.
+    updateSnapshot();
 
     const subscription = machine.actor.subscribe((state: any) => {
       setSnapshot(state);

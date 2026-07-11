@@ -1,5 +1,5 @@
 import {
-  Box, Button, Typography, CircularProgress,
+  Box, Button, Typography,
   Container, Avatar
 } from "@mui/material";
 import React from "react";
@@ -28,21 +28,8 @@ dayjs.locale('es');
 const ModifyTurn: React.FC = () => {
   const { uiSend, turnState, turnSend } = useMachines();
 
-  const { isLoadingTurnDetails, isModifyingTurn, isLoadingAvailableSlots, modifyError, availableTurns } = turnState.context;
+  const { isLoadingAvailableSlots, modifyError, availableTurns } = turnState.context;
   const { currentTurn, selectedDate, selectedTime, availableDates } = turnState.context.modifyTurn;
-
-  if (isLoadingTurnDetails) {
-    return (
-      <Container maxWidth="md" className="modify-turn-container">
-        <Box className="modify-turn-loading">
-          <CircularProgress size={40} />
-          <Typography variant="h6" sx={{ mt: 2 }}>
-            Cargando detalles del turno...
-          </Typography>
-        </Box>
-      </Container>
-    );
-  }
 
   if (!currentTurn) {
     console.error("No current turn found in context:", turnState.context.modifyTurn);
@@ -209,16 +196,9 @@ const ModifyTurn: React.FC = () => {
             onClick={() => turnSend({ type: "SUBMIT_MODIFY_REQUEST" })}
             variant="contained"
             className="reservation-btn-primary"
-            disabled={!selectedDate || !selectedTime || isModifyingTurn}
+            disabled={!selectedDate || !selectedTime}
           >
-            {isModifyingTurn ? (
-              <>
-                <CircularProgress size={20} sx={{ mr: 1 }} />
-                Enviando solicitud...
-              </>
-            ) : (
-              '✓ Solicitar Modificación'
-            )}
+            ✓ Solicitar Modificación
           </Button>
         </Box>
       </Container>

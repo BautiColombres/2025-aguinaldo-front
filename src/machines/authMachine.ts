@@ -120,6 +120,9 @@ export const authMachine = createMachine({
                 isAuthenticated: event.output.isAuthenticated
               })),
               ({ event }) => {
+                // FBUG-L2 — read the expired-session signal straight from the resolved
+                // event (event.output), never from context populated by the preceding
+                // assign. This keeps the snackbar independent of onDone action ordering.
                 // If we had auth data but token validation failed, show message and navigate
                 if (event.output.authData && !event.output.isAuthenticated) {
                   orchestrator.send({ type: "CLEAR_ACCESS_TOKEN" });
@@ -352,9 +355,7 @@ export const authMachine = createMachine({
                 if (error) errors[key] = error;
               }
             }
-            
-            context.formErrors = errors;
-            
+
             return Object.keys(errors).length === 0;
           },
           actions: assign({
@@ -408,11 +409,10 @@ export const authMachine = createMachine({
             guard: ({ context }) => context.mode === "login",
             actions: assign(({ event }) => {
               const response = event.output;
-              
-              if (response.accessToken && response.refreshToken) {
-                AuthService.saveAuthData(response);
-              }
-              
+
+              // FSEC-H1 Stage 2 — no token persistence. The access token lives in
+              // context (SET_AUTH on the authenticated entry) and the refresh token
+              // stays in the httpOnly cookie set by the backend on signin.
               return {
                 isAuthenticated: true,
                 authResponse: response,
@@ -450,29 +450,39 @@ export const authMachine = createMachine({
         ],
         onError: {
           target: "idle",
-          actions: assign(({ event, context }) => {
+          // FBUG-M5 — build a fully typed ApiErrorResponse payload instead of an
+          // untyped partial assign, so consumers can rely on a consistent shape.
+          actions: assign(({ event, context }): Partial<AuthMachineContext> => {
             const error = event.error;
-            
+
             // Handle validation errors from backend
-            if (error && (error as any).fieldErrors) {
+            if (error && (error as { fieldErrors?: Record<string, string> }).fieldErrors) {
+              const fieldErrors = (error as { fieldErrors: Record<string, string> }).fieldErrors;
+              const validationResponse: ApiErrorResponse = {
+                error: 'Por favor revise los campos marcados con error',
+                message: 'Por favor revise los campos marcados con error',
+              };
               return {
                 formErrors: {
                   ...context.formErrors,
-                  ...(error as any).fieldErrors
+                  ...fieldErrors,
                 },
-                authResponse: { 
-                  error: 'Por favor revise los campos marcados con error'
-                },
-                loading: false
+                authResponse: validationResponse,
+                loading: false,
               };
             }
-            
+
             // Handle general errors
+            const message = error instanceof Error ? error.message : 'Error en autenticación';
+            const status = (error as { status?: number } | null)?.status;
+            const generalResponse: ApiErrorResponse = {
+              error: message,
+              message,
+              ...(typeof status === 'number' ? { status } : {}),
+            };
             return {
-              authResponse: { 
-                error: error instanceof Error ? error.message : 'Error en autenticación' 
-              },
-              loading: false
+              authResponse: generalResponse,
+              loading: false,
             };
           })
         }
@@ -481,18 +491,12 @@ export const authMachine = createMachine({
 
     refreshingToken: {
       invoke: {
-        src: fromPromise(async ({ input }) => {
-          const context = input;
-          if (!context.authResponse || !("refreshToken" in context.authResponse)) {
-            throw new Error("No refresh token available");
-          }
-          
-          const refreshToken = (context.authResponse as SignInResponse).refreshToken;
-          const response = await AuthService.refreshToken(refreshToken);
-          
-          // Update localStorage with new tokens
-          localStorage.setItem('authData', JSON.stringify(response));
-          
+        src: fromPromise(async () => {
+          // FSEC-H1 Stage 2 — cookie-based refresh. The httpOnly refresh cookie
+          // travels automatically (credentials: 'include'); no token is read from
+          // context and nothing is persisted. The new access token flows to the
+          // machines via SET_AUTH in onDone below.
+          const response = await AuthService.refreshToken();
           return response;
         }),
         input: ({ context }) => context,

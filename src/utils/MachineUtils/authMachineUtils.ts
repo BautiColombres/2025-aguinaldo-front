@@ -1,6 +1,5 @@
 import { AuthService } from "../../service/auth-service.service";
 import type { AuthMachineContext } from "../../machines/authMachine";
-import { buildApiUrl, getAuthenticatedFetchOptions } from "../../../config/api";
 
 /**
  * Utility functions for authMachine service calls
@@ -20,52 +19,35 @@ export interface LogoutResult {
 }
 
 /**
- * Validate if the stored access token is still valid by making an authenticated API call
- */
-export const validateAccessToken = async (accessToken: string): Promise<boolean> => {
-  try {
-    const url = buildApiUrl('/api/profile/me');
-    const response = await fetch(url, {
-      ...getAuthenticatedFetchOptions(accessToken),
-      method: 'GET',
-    });
-    
-    // If token is invalid (401 or 403), clear auth data
-    if (response.status === 401 || response.status === 403) {
-      console.warn('Token validation failed - clearing auth data');
-      AuthService.clearAuthData();
-      return false;
-    }
-    
-    return response.ok;
-  } catch (error) {
-    console.warn('Token validation failed:', error);
-    // Clear auth data on network errors too
-    AuthService.clearAuthData();
-    return false;
-  }
-};
-
-/**
- * Check stored authentication data and validate token
+ * FSEC-H1 Stage 2 — reload bootstrap.
+ * The access token is no longer persisted, so on app start we re-mint it by
+ * calling the cookie-based refresh endpoint (AuthService.refreshToken() sends
+ * the httpOnly refresh cookie via credentials: 'include'). Success → a fresh
+ * access token in the returned SignInResponse; a 401 / missing cookie → throw,
+ * which we translate into a logged-out result. Nothing is read from localStorage.
  */
 export const checkStoredAuth = async (): Promise<CheckAuthResult> => {
-  const authData = AuthService.getStoredAuthData();
-  
-  if (!authData?.accessToken || !authData?.refreshToken) {
+  try {
+    const authData = await AuthService.refreshToken();
+
+    if (!authData?.accessToken) {
+      return {
+        authData: null,
+        isAuthenticated: false
+      };
+    }
+
     return {
       authData,
+      isAuthenticated: true
+    };
+  } catch (error) {
+    console.warn('Auth bootstrap via refresh-token failed:', error);
+    return {
+      authData: null,
       isAuthenticated: false
     };
   }
-
-  // Validate the access token
-  const isTokenValid = await validateAccessToken(authData.accessToken);
-  
-  return {
-    authData,
-    isAuthenticated: isTokenValid
-  };
 };
 
 /**
@@ -104,13 +86,13 @@ export const submitAuthentication = async ({ context }: AuthSubmitParams) => {
 
 /**
  * Handle user logout
+ * FSEC-H1 Stage 2 — signOut() sends no token; the httpOnly refresh cookie travels
+ * via credentials: 'include' and the backend revokes + clears it. We still clear
+ * any legacy local keys defensively.
  */
 export const logoutUser = async (): Promise<boolean> => {
   try {
-    const authData = AuthService.getStoredAuthData();
-    if (authData?.refreshToken) {
-      await  AuthService.signOut(authData.refreshToken);
-    }
+    await AuthService.signOut();
     AuthService.clearAuthData();
     return true;
   } catch (error) {

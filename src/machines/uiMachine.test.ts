@@ -126,6 +126,40 @@ describe('uiMachine', () => {
       });
     });
 
+    // FBUG-H5: patientId must be parsed with URLSearchParams so extra/ordered
+    // query params do not corrupt the value.
+    it('should parse patientId via URLSearchParams when extra params follow it (initial path)', () => {
+      actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
+      actor.start();
+
+      actor.send({
+        type: 'ADD_NAVIGATE_HOOK',
+        navigate: mockNavigate,
+        initialPath: '/patient-detail?patientId=patient123&foo=bar&baz=qux',
+      });
+
+      expect(mockOrchestrator.send).toHaveBeenCalledWith({
+        type: 'SELECT_PATIENT',
+        patientId: 'patient123'
+      });
+    });
+
+    it('should parse patientId when it is not the first query param (initial path)', () => {
+      actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
+      actor.start();
+
+      actor.send({
+        type: 'ADD_NAVIGATE_HOOK',
+        navigate: mockNavigate,
+        initialPath: '/patient-detail?foo=bar&patientId=patient777',
+      });
+
+      expect(mockOrchestrator.send).toHaveBeenCalledWith({
+        type: 'SELECT_PATIENT',
+        patientId: 'patient777'
+      });
+    });
+
     it('should handle turn cancellation from patient view turns', () => {
       actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
       actor.start();
@@ -316,6 +350,88 @@ describe('uiMachine', () => {
         type: 'CLEAR_PATIENT_SELECTION'
       });
     });
+
+    // FBUG-H5: NAVIGATE must parse patientId with URLSearchParams so extra/ordered
+    // query params do not corrupt the value.
+    it('should parse patientId via URLSearchParams when extra params follow it (NAVIGATE)', () => {
+      actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
+      actor.start();
+
+      actor.send({
+        type: 'ADD_NAVIGATE_HOOK',
+        navigate: mockNavigate,
+        initialPath: '/home',
+      });
+
+      actor.send({ type: 'NAVIGATE', to: '/patient-detail?patientId=patient555&tab=history' });
+
+      expect(mockOrchestrator.send).toHaveBeenCalledWith({
+        type: 'SELECT_PATIENT',
+        patientId: 'patient555'
+      });
+    });
+
+    it('should parse patientId when it is not the first query param (NAVIGATE)', () => {
+      actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
+      actor.start();
+
+      actor.send({
+        type: 'ADD_NAVIGATE_HOOK',
+        navigate: mockNavigate,
+        initialPath: '/home',
+      });
+
+      actor.send({ type: 'NAVIGATE', to: '/patient-detail?tab=history&patientId=patient888' });
+
+      expect(mockOrchestrator.send).toHaveBeenCalledWith({
+        type: 'SELECT_PATIENT',
+        patientId: 'patient888'
+      });
+    });
+
+    // FBUG-C2: NAVIGATE must update currentPath immutably via assign (new context),
+    // not mutate the previous context object in place.
+    it('should produce a new context via assign instead of mutating the previous one', () => {
+      actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
+      actor.start();
+
+      actor.send({
+        type: 'ADD_NAVIGATE_HOOK',
+        navigate: mockNavigate,
+        initialPath: '/home',
+      });
+
+      const contextBefore = actor.getSnapshot().context;
+      expect(contextBefore.currentPath).toBe('/home');
+
+      actor.send({ type: 'NAVIGATE', to: '/profile' });
+
+      const contextAfter = actor.getSnapshot().context;
+
+      // A new context object must be produced by assign.
+      expect(contextAfter).not.toBe(contextBefore);
+      // The previously-captured context must NOT have been mutated in place.
+      expect(contextBefore.currentPath).toBe('/home');
+      // The new context reflects the navigation.
+      expect(contextAfter.currentPath).toBe('/profile');
+    });
+
+    // FBUG-C2: the navigate() side-effect runs exactly once with the target path.
+    it('should call navigate exactly once with the target path', () => {
+      actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
+      actor.start();
+
+      actor.send({
+        type: 'ADD_NAVIGATE_HOOK',
+        navigate: mockNavigate,
+        initialPath: '/home',
+      });
+
+      actor.send({ type: 'NAVIGATE', to: '/profile' });
+
+      expect(mockNavigate).toHaveBeenCalledTimes(1);
+      expect(mockNavigate).toHaveBeenCalledWith('/profile');
+    });
   });
 
   describe('OPEN_SNACKBAR Event', () => {
@@ -383,7 +499,10 @@ describe('uiMachine', () => {
       expect(snackbar.severity).toBe('info');
     });
 
-    it('should auto-close snackbar after 6 seconds', () => {
+    // FBUG-L4 — the machine no longer runs a hand-rolled auto-close timer; auto-hide
+    // is delegated to MUI's autoHideDuration in SnackbarAlert. The machine must NOT
+    // schedule a setTimeout that sends CLOSE_SNACKBAR.
+    it('should NOT schedule a machine-side auto-close timer (FBUG-L4)', () => {
       actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
       actor.start();
 
@@ -395,10 +514,10 @@ describe('uiMachine', () => {
 
       expect(actor.getSnapshot().context.snackbar.open).toBe(true);
 
-      // Fast-forward time by 6 seconds
+      // Fast-forward well past the old 6s window: no timer-driven CLOSE_SNACKBAR.
       vi.advanceTimersByTime(6000);
 
-      expect(mockOrchestrator.send).toHaveBeenCalledWith({ type: 'CLOSE_SNACKBAR' });
+      expect(mockOrchestrator.send).not.toHaveBeenCalledWith({ type: 'CLOSE_SNACKBAR' });
     });
 
     it('should replace previous snackbar message', () => {
@@ -689,7 +808,8 @@ describe('uiMachine', () => {
       expect(context.confirmDialog.open).toBe(true);
     });
 
-    it('should handle multiple snackbar messages with auto-close', () => {
+    // FBUG-L4 — rapid successive snackbars must not stack/leak machine timers.
+    it('should not stack machine timers across rapid snackbars (FBUG-L4)', () => {
       actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
       actor.start();
 
@@ -707,13 +827,11 @@ describe('uiMachine', () => {
         severity: 'success',
       });
 
-      // First message timer
-      vi.advanceTimersByTime(3000);
-      expect(mockOrchestrator.send).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(6000);
 
-      // Second message timer
-      vi.advanceTimersByTime(3000);
-      expect(mockOrchestrator.send).toHaveBeenCalledTimes(2);
+      // No hand-rolled timers => the machine never auto-sends CLOSE_SNACKBAR.
+      expect(mockOrchestrator.send).not.toHaveBeenCalledWith({ type: 'CLOSE_SNACKBAR' });
+      expect(actor.getSnapshot().context.snackbar.message).toBe('Second message');
     });
   });
 

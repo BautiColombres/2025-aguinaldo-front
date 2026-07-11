@@ -27,6 +27,7 @@ vi.mock('#/core/Orchestrator', () => ({
 }));
 
 import { dataMachine, DataMachineDefaultContext } from './dataMachine';
+import { API_ERROR_MESSAGES } from '../../config/api';
 import { orchestrator } from '#/core/Orchestrator';
 import * as dataMachineUtils from '../utils/MachineUtils/dataMachineUtils';
 import * as doctorMachineUtils from '../utils/MachineUtils/doctorMachineUtils';
@@ -1105,6 +1106,35 @@ describe('dataMachine', () => {
       }, { timeout: 2000 });
 
       expect(actor.getSnapshot().context.errors.doctors).toBe('Error al cargar doctores');
+    });
+
+    // FBUG-M6 — an AbortSignal.timeout rejection must be classified and surfaced
+    // as the shared localized timeout message, not left as raw/undefined text.
+    it('maps an AbortSignal.timeout rejection to the shared timeout message', async () => {
+      actor = createActor(dataMachine, {});
+      actor.start();
+
+      actor.send({
+        type: 'SET_AUTH',
+        accessToken: 'token123',
+        userId: 'patient1',
+        userRole: 'PATIENT',
+      });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('ready');
+      }, { timeout: 2000 });
+
+      mockLoadDoctors.mockClear();
+      mockLoadDoctors.mockRejectedValue(new DOMException('The operation timed out.', 'TimeoutError'));
+
+      actor.send({ type: 'RELOAD_DOCTORS' });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      }, { timeout: 2000 });
+
+      expect(actor.getSnapshot().context.errors.doctors).toBe(API_ERROR_MESSAGES.timeout);
     });
   });
 

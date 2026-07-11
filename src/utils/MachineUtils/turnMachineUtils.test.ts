@@ -33,6 +33,21 @@ vi.mock('../../service/auth-service.service', () => ({
   }
 }))
 
+// Spy on the centralized api helpers while keeping buildApiUrl/API_CONFIG real.
+vi.mock('../../../config/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../config/api')>()
+  return {
+    ...actual,
+    getAuthenticatedFetchOptions: vi.fn((accessToken: string) => ({
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`
+      },
+      credentials: 'include'
+    }))
+  }
+})
+
 describe('turnMachineUtils', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -121,7 +136,9 @@ describe('turnMachineUtils', () => {
   })
 
   describe('loadTurnDetails', () => {
-    it('should return turn details when found', async () => {
+    // Routes HTTP through the centralized config/api helpers (buildApiUrl +
+    // getAuthenticatedFetchOptions), not a hand-rolled fetch config.
+    it('should use buildApiUrl and getAuthenticatedFetchOptions and return turn details', async () => {
       const params = {
         turnId: 'turn456',
         accessToken: 'token123'
@@ -135,16 +152,21 @@ describe('turnMachineUtils', () => {
         json: vi.fn().mockResolvedValue(mockTurns)
       })
 
+      const { getAuthenticatedFetchOptions } = await import('../../../config/api')
+
       const result = await loadTurnDetails(params)
 
       expect(result).toEqual({ id: 'turn456', status: 'PENDING' })
-      expect(global.fetch).toHaveBeenCalledWith('http://localhost:8080/api/turns/my-turns', {
-        method: 'GET',
-        headers: {
-          'Authorization': 'Bearer token123',
-          'Content-Type': 'application/json'
-        }
-      })
+      // Uses the centralized authenticated fetch options helper.
+      expect(getAuthenticatedFetchOptions).toHaveBeenCalledWith('token123')
+      // buildApiUrl produced the full my-turns URL and credentials are included.
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/turns/my-turns',
+        expect.objectContaining({
+          method: 'GET',
+          credentials: 'include'
+        })
+      )
     })
 
     it('should throw error when turn not found', async () => {
@@ -164,46 +186,27 @@ describe('turnMachineUtils', () => {
       await expect(loadTurnDetails(params)).rejects.toThrow('Turn with ID turn999 not found in your turns')
     })
 
-    it('should refresh token and retry on 401', async () => {
+    // Post-FSEC-H1 the refresh flow is centralized; loadTurnDetails must NOT
+    // hand-roll a manual refresh-token retry on 401.
+    it('should NOT hand-roll a manual refresh-token retry on 401', async () => {
       const params = {
         turnId: 'turn456',
-        accessToken: 'old-token'
+        accessToken: 'token123'
       }
-      const mockTurns = [{ id: 'turn456', status: 'PENDING' }]
-
-      // Mock localStorage
-      const localStorageMock = {
-        getItem: vi.fn().mockReturnValue(JSON.stringify({ refreshToken: 'refresh-token' })),
-        setItem: vi.fn()
-      }
-      Object.defineProperty(window, 'localStorage', { value: localStorageMock })
-
-      // First call returns 401, second call succeeds
-      ;(global.fetch as Mock)
-        .mockResolvedValueOnce({
-          status: 401,
-          ok: false
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: vi.fn().mockResolvedValue(mockTurns)
-        })
-
-      // Mock AuthService.refreshToken
-      const { AuthService } = await import('../../service/auth-service.service')
-      ;(AuthService.refreshToken as Mock).mockResolvedValue({
-        accessToken: 'new-token',
-        refreshToken: 'new-refresh'
+      ;(global.fetch as Mock).mockResolvedValue({
+        status: 401,
+        ok: false,
+        statusText: 'Unauthorized',
+        text: vi.fn().mockResolvedValue('Unauthorized')
       })
 
-      const result = await loadTurnDetails(params)
+      const { AuthService } = await import('../../service/auth-service.service')
 
-      expect(AuthService.refreshToken).toHaveBeenCalledWith('refresh-token')
-      expect(localStorage.setItem).toHaveBeenCalledWith('authData', JSON.stringify({
-        accessToken: 'new-token',
-        refreshToken: 'new-refresh'
-      }))
-      expect(result).toEqual({ id: 'turn456', status: 'PENDING' })
+      await expect(loadTurnDetails(params)).rejects.toThrow()
+
+      expect(AuthService.refreshToken).not.toHaveBeenCalled()
+      // A single request — no manual retry loop.
+      expect(global.fetch).toHaveBeenCalledTimes(1)
     })
 
     it('should throw error on API failure', async () => {
