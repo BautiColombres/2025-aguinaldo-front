@@ -1,5 +1,5 @@
 import { createMachine, assign, fromPromise } from 'xstate';
-import { MedicalHistory, CreateMedicalHistoryRequest, UpdateMedicalHistoryContentRequest } from '../models/MedicalHistory';
+import { MedicalHistory, CreateMedicalHistoryRequest, UpdateMedicalHistoryContentRequest, TagFrequency } from '../models/MedicalHistory';
 import { MedicalHistoryService } from '../service/medical-history-service.service';
 import { orchestrator } from '../core/Orchestrator';
 import { UI_MACHINE_ID } from './uiMachine';
@@ -27,19 +27,22 @@ interface MedicalHistoryMachineContext {
     status?: string;
   } | null;
   patientTurns: any[]; // Store patient's turns for turn information display
+  frequentTags: TagFrequency[];
   error: string | null;
   isLoading: boolean;
   selectedHistory: MedicalHistory | null;
   newHistoryContent: string;
+  newHistoryTags: string[];
   editingContent: string;
+  editingTags: string[];
   accessToken: string | null;
   doctorId: string | null;
 }
 
 export type MedicalHistoryMachineEvent =
   | { type: 'LOAD_PATIENT_MEDICAL_HISTORY'; patientId: string; accessToken: string; doctorId?: string }
-  | { type: 'ADD_HISTORY_ENTRY_FOR_TURN'; turnId: string; content: string; accessToken: string; doctorId: string; turnInfo?: { patientName?: string; scheduledAt?: string; status?: string } }
-  | { type: 'UPDATE_HISTORY_ENTRY'; historyId: string; content: string; accessToken: string; doctorId: string }
+  | { type: 'ADD_HISTORY_ENTRY_FOR_TURN'; turnId: string; content: string; tags?: string[]; accessToken: string; doctorId: string; turnInfo?: { patientName?: string; scheduledAt?: string; status?: string } }
+  | { type: 'UPDATE_HISTORY_ENTRY'; historyId: string; content: string; tags?: string[]; accessToken: string; doctorId: string }
   | { type: 'DELETE_HISTORY_ENTRY'; historyId: string; accessToken: string; doctorId: string }
   | { type: 'SELECT_HISTORY'; history: MedicalHistory }
   | { type: 'CLEAR_SELECTION' }
@@ -60,11 +63,14 @@ export const medicalHistoryMachine = createMachine({
     currentTurnId: null,
     currentTurnInfo: null,
     patientTurns: [],
+    frequentTags: [],
     error: null,
     isLoading: false,
     selectedHistory: null,
     newHistoryContent: '',
+    newHistoryTags: [],
     editingContent: '',
+    editingTags: [],
     accessToken: null,
     doctorId: null,
   } as MedicalHistoryMachineContext,
@@ -90,6 +96,7 @@ export const medicalHistoryMachine = createMachine({
             currentTurnId: ({ event }) => event.turnId,
             currentTurnInfo: ({ event }) => event.turnInfo || null,
             newHistoryContent: ({ event }) => event.content,
+            newHistoryTags: ({ event }) => event.tags ?? [],
             accessToken: ({ event }) => event.accessToken,
             doctorId: ({ event }) => event.doctorId,
             error: () => null,
@@ -99,6 +106,7 @@ export const medicalHistoryMachine = createMachine({
           target: 'updatingMedicalHistory',
           actions: assign({
             editingContent: ({ event }) => event.content,
+            editingTags: ({ event }) => event.tags ?? [],
             accessToken: ({ event }) => event.accessToken,
             doctorId: ({ event }) => event.doctorId,
             selectedHistory: ({ context, event }) => 
@@ -160,6 +168,7 @@ export const medicalHistoryMachine = createMachine({
           actions: assign({
             medicalHistories: ({ event }) => event.output.medicalHistories,
             patientTurns: ({ event }) => event.output.patientTurns,
+            frequentTags: ({ event }) => event.output.frequentTags,
           }),
         },
         onError: {
@@ -179,52 +188,24 @@ export const medicalHistoryMachine = createMachine({
         input: ({ context }) => ({
           turnId: context.currentTurnId!,
           content: context.newHistoryContent,
+          tags: context.newHistoryTags,
           accessToken: context.accessToken!,
           doctorId: context.doctorId!,
         }),
-        onDone: {
-          target: 'idle',
-          actions: [
-            assign({
-              medicalHistories: ({ context, event }) => [...context.medicalHistories, event.output],
-              newHistoryContent: () => '',
-              currentTurnId: () => null,
-              currentTurnInfo: () => null,
-              selectedHistory: () => null,
-              editingContent: () => '',
-            }),
-            ({ context }) => {
-              const turnInfo = context.currentTurnInfo;
-              const message = turnInfo 
-                ? `Historia médica agregada exitosamente para ${turnInfo.patientName} - ${formatDate(turnInfo.scheduledAt || '')}`
-                : 'Historia médica agregada exitosamente';
-              
-              orchestrator.sendToMachine(UI_MACHINE_ID, {
-                type: 'OPEN_SNACKBAR',
-                message,
-                severity: 'success'
-              });
-              
-              try {
-                orchestrator.sendToMachine('turn', {
-                  type: 'RETRY_DOCTOR_TURNS'
-                });
-                
-                orchestrator.sendToMachine('data', {
-                  type: 'RETRY_DOCTOR_PATIENTS'
-                });
-                
-                if (context.currentPatientId) {
-                  orchestrator.sendToMachine('doctor', {
-                    type: 'RETRY_DOCTOR_PATIENTS'
-                  });
-                }
-              } catch (error) {
-                // Silent error handling for data refresh
-              }
-            }
-          ],
-        },
+        // On success, if a patient is loaded in context, route through the folded
+        // loader (reloadingAfterMutation) so the history list, turns AND the
+        // frequent-tags cloud all refresh from one source. Otherwise go idle.
+        onDone: [
+          {
+            target: 'reloadingAfterMutation',
+            guard: 'hasCurrentPatient',
+            actions: ['applyAddSuccess', 'notifyAddSuccess'],
+          },
+          {
+            target: 'idle',
+            actions: ['applyAddSuccess', 'notifyAddSuccess'],
+          },
+        ],
         onError: {
           target: 'idle',
           actions: [
@@ -276,29 +257,21 @@ export const medicalHistoryMachine = createMachine({
         input: ({ context }) => ({
           historyId: context.selectedHistory!.id,
           content: context.editingContent,
+          tags: context.editingTags,
           accessToken: context.accessToken!,
           doctorId: context.doctorId!,
         }),
-        onDone: {
-          target: 'idle',
-          actions: [
-            assign({
-              medicalHistories: ({ context, event }) =>
-                context.medicalHistories.map(h =>
-                  h.id === event.output.id ? event.output : h
-                ),
-              selectedHistory: () => null,
-              editingContent: () => '',
-            }),
-            () => {
-              orchestrator.sendToMachine(UI_MACHINE_ID, {
-                type: 'OPEN_SNACKBAR',
-                message: 'Historia médica actualizada exitosamente',
-                severity: 'success'
-              });
-            }
-          ],
-        },
+        onDone: [
+          {
+            target: 'reloadingAfterMutation',
+            guard: 'hasCurrentPatient',
+            actions: ['applyUpdateSuccess', 'notifyUpdateSuccess'],
+          },
+          {
+            target: 'idle',
+            actions: ['applyUpdateSuccess', 'notifyUpdateSuccess'],
+          },
+        ],
         onError: {
           target: 'idle',
           actions: [
@@ -306,6 +279,7 @@ export const medicalHistoryMachine = createMachine({
               error: ({ event }) => `Error actualizando la historia médica: ${event.error}`,
               selectedHistory: () => null,
               editingContent: () => '',
+              editingTags: () => [],
             }),
             () => {
               orchestrator.sendToMachine(UI_MACHINE_ID, {
@@ -328,23 +302,17 @@ export const medicalHistoryMachine = createMachine({
           accessToken: context.accessToken!,
           doctorId: context.doctorId!,
         }),
-        onDone: {
-          target: 'idle',
-          actions: [
-            assign({
-              medicalHistories: ({ context }) =>
-                context.medicalHistories.filter(h => h.id !== context.selectedHistory!.id),
-              selectedHistory: () => null,
-            }),
-            () => {
-              orchestrator.sendToMachine(UI_MACHINE_ID, {
-                type: 'OPEN_SNACKBAR',
-                message: 'Historia médica eliminada exitosamente',
-                severity: 'success'
-              });
-            }
-          ],
-        },
+        onDone: [
+          {
+            target: 'reloadingAfterMutation',
+            guard: 'hasCurrentPatient',
+            actions: ['applyDeleteSuccess', 'notifyDeleteSuccess'],
+          },
+          {
+            target: 'idle',
+            actions: ['applyDeleteSuccess', 'notifyDeleteSuccess'],
+          },
+        ],
         onError: {
           target: 'idle',
           actions: [
@@ -362,15 +330,122 @@ export const medicalHistoryMachine = createMachine({
         },
       },
     },
+    // After any successful add/update/delete, re-run the folded loader for the
+    // currently-selected patient/doctor so histories, turns and the frequent-tags
+    // cloud all stay consistent from a single source (no extra public event or
+    // render-phase dispatch, so StrictMode double-fire is avoided).
+    reloadingAfterMutation: {
+      entry: assign({ isLoading: () => true }),
+      exit: assign({ isLoading: () => false }),
+      invoke: {
+        src: 'loadPatientMedicalHistory',
+        input: ({ context }) => ({
+          patientId: context.currentPatientId!,
+          accessToken: context.accessToken!,
+          doctorId: context.doctorId || undefined,
+        }),
+        onDone: {
+          target: 'idle',
+          actions: assign({
+            medicalHistories: ({ event }) => event.output.medicalHistories,
+            patientTurns: ({ event }) => event.output.patientTurns,
+            frequentTags: ({ event }) => event.output.frequentTags,
+          }),
+        },
+        onError: {
+          target: 'idle',
+        },
+      },
+    },
   },
 }, {
+  guards: {
+    hasCurrentPatient: ({ context }) => context.currentPatientId != null,
+  },
+  actions: {
+    applyAddSuccess: assign({
+      medicalHistories: ({ context, event }: any) => [...context.medicalHistories, event.output],
+      newHistoryContent: () => '',
+      newHistoryTags: () => [],
+      currentTurnId: () => null,
+      currentTurnInfo: () => null,
+      selectedHistory: () => null,
+      editingContent: () => '',
+    }),
+    notifyAddSuccess: ({ context }: any) => {
+      const turnInfo = context.currentTurnInfo;
+      const message = turnInfo
+        ? `Historia médica agregada exitosamente para ${turnInfo.patientName} - ${formatDate(turnInfo.scheduledAt || '')}`
+        : 'Historia médica agregada exitosamente';
+
+      orchestrator.sendToMachine(UI_MACHINE_ID, {
+        type: 'OPEN_SNACKBAR',
+        message,
+        severity: 'success'
+      });
+
+      try {
+        orchestrator.sendToMachine('turn', {
+          type: 'RETRY_DOCTOR_TURNS'
+        });
+
+        orchestrator.sendToMachine('data', {
+          type: 'RETRY_DOCTOR_PATIENTS'
+        });
+
+        if (context.currentPatientId) {
+          orchestrator.sendToMachine('doctor', {
+            type: 'RETRY_DOCTOR_PATIENTS'
+          });
+        }
+      } catch (error) {
+        // Silent error handling for data refresh
+      }
+    },
+    applyUpdateSuccess: assign({
+      medicalHistories: ({ context, event }: any) =>
+        context.medicalHistories.map((h: MedicalHistory) =>
+          h.id === event.output.id ? event.output : h
+        ),
+      selectedHistory: () => null,
+      editingContent: () => '',
+      editingTags: () => [],
+    }),
+    notifyUpdateSuccess: () => {
+      orchestrator.sendToMachine(UI_MACHINE_ID, {
+        type: 'OPEN_SNACKBAR',
+        message: 'Historia médica actualizada exitosamente',
+        severity: 'success'
+      });
+    },
+    applyDeleteSuccess: assign({
+      medicalHistories: ({ context }: any) =>
+        context.medicalHistories.filter((h: MedicalHistory) => h.id !== context.selectedHistory!.id),
+      selectedHistory: () => null,
+    }),
+    notifyDeleteSuccess: () => {
+      orchestrator.sendToMachine(UI_MACHINE_ID, {
+        type: 'OPEN_SNACKBAR',
+        message: 'Historia médica eliminada exitosamente',
+        severity: 'success'
+      });
+    },
+  },
   actors: {
     loadPatientMedicalHistory: fromPromise(async ({ input }: { input: { patientId: string; accessToken: string; doctorId?: string } }) => {
       try {
         // If doctorId is provided, use the doctor-specific endpoint to retrieve only histories the doctor can access.
         let medicalHistories;
+        let frequentTags: TagFrequency[] = [];
         if (input.doctorId) {
           medicalHistories = await MedicalHistoryService.getPatientMedicalHistoryByDoctor(input.accessToken, input.doctorId, input.patientId);
+          // Fold the frequent-tags read into the same load so no extra event/render-phase send is needed.
+          // A failing tags fetch must not break the history load.
+          try {
+            frequentTags = await MedicalHistoryService.getPatientFrequentTags(input.accessToken, input.doctorId, input.patientId);
+          } catch (tagsError) {
+            frequentTags = [];
+          }
         } else {
           // Fallback to the general patient endpoint (e.g., when a patient is viewing their own history)
           medicalHistories = await MedicalHistoryService.getPatientMedicalHistory(input.accessToken, input.patientId);
@@ -378,31 +453,37 @@ export const medicalHistoryMachine = createMachine({
 
         return {
           medicalHistories,
-          patientTurns: []
+          patientTurns: [],
+          frequentTags,
         };
       } catch (error) {
         return {
           medicalHistories: [],
-          patientTurns: []
+          patientTurns: [],
+          frequentTags: [],
         };
       }
     }),
-    addMedicalHistoryEntryForTurn: fromPromise(async ({ input }: { input: { turnId: string; content: string; accessToken: string; doctorId: string } }) => {
+    addMedicalHistoryEntryForTurn: fromPromise(async ({ input }: { input: { turnId: string; content: string; tags?: string[]; accessToken: string; doctorId: string } }) => {
       try {
         const request: CreateMedicalHistoryRequest = {
           turnId: input.turnId,
           content: input.content,
+          ...(input.tags && input.tags.length > 0 ? { tags: input.tags } : {}),
         };
-        
+
         const result = await MedicalHistoryService.addMedicalHistory(input.accessToken, input.doctorId, request);
         return result;
       } catch (error) {
         throw error;
       }
     }),
-    updateMedicalHistoryEntry: fromPromise(async ({ input }: { input: { historyId: string; content: string; accessToken: string; doctorId: string } }) => {
+    updateMedicalHistoryEntry: fromPromise(async ({ input }: { input: { historyId: string; content: string; tags?: string[]; accessToken: string; doctorId: string } }) => {
       const request: UpdateMedicalHistoryContentRequest = {
         content: input.content,
+        // Always send tags on update: emptying a note's tags must persist the
+        // clear, otherwise the backend keeps the stale set (silent failure).
+        tags: input.tags ?? [],
       };
       return await MedicalHistoryService.updateMedicalHistory(input.accessToken, input.doctorId, input.historyId, request);
     }),

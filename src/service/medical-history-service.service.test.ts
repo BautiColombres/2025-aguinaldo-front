@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MedicalHistoryService } from './medical-history-service.service';
-import type { MedicalHistory, CreateMedicalHistoryRequest, UpdateMedicalHistoryContentRequest } from '../models/MedicalHistory';
+import type { MedicalHistory, CreateMedicalHistoryRequest, UpdateMedicalHistoryContentRequest, TagFrequency } from '../models/MedicalHistory';
 
 // Mock the API config
 vi.mock('../../config/api', () => ({
@@ -12,7 +12,8 @@ vi.mock('../../config/api', () => ({
       DELETE_MEDICAL_HISTORY: '/api/doctors/{doctorId}/medical-history/{historyId}',
       GET_DOCTOR_MEDICAL_HISTORY: '/api/doctors/{doctorId}/medical-history',
       GET_PATIENT_MEDICAL_HISTORY: '/api/medical-history/patient/{patientId}',
-      GET_PATIENT_HISTORY_BY_DOCTOR: '/api/doctors/{doctorId}/patients/{patientId}/medical-history'
+      GET_PATIENT_HISTORY_BY_DOCTOR: '/api/doctors/{doctorId}/patients/{patientId}/medical-history',
+      GET_PATIENT_TAGS: '/api/doctors/{doctorId}/patients/{patientId}/tags'
     },
     DEFAULT_HEADERS: {
       'Content-Type': 'application/json'
@@ -582,6 +583,89 @@ describe('MedicalHistoryService', () => {
       mockFetch.mockRejectedValueOnce(networkError);
 
       await expect(MedicalHistoryService.getPatientMedicalHistoryByDoctor(accessToken, doctorId, patientId))
+        .rejects.toThrow('Network connection failed');
+    });
+  });
+
+  describe('getPatientFrequentTags', () => {
+    const mockTags: TagFrequency[] = [
+      { tag: 'diabetes', count: 5 },
+      { tag: 'hipertensión', count: 3 },
+      { tag: 'control', count: 1 }
+    ];
+
+    it('should successfully get patient frequent tags ordered by count', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockTags)
+      });
+
+      const result = await MedicalHistoryService.getPatientFrequentTags(accessToken, doctorId, patientId);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/doctors/doctor-1/patients/patient-1/tags',
+        expect.objectContaining({
+          method: 'GET',
+          headers: expect.objectContaining({
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          })
+        })
+      );
+      expect(result).toEqual(mockTags);
+    });
+
+    it('should return empty array when patient has no tags', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve([])
+      });
+
+      const result = await MedicalHistoryService.getPatientFrequentTags(accessToken, doctorId, patientId);
+
+      expect(result).toEqual([]);
+    });
+
+    it('should throw error when get frequent tags fails with error message', async () => {
+      const errorResponse = { message: 'Patient not found' };
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: () => Promise.resolve(errorResponse)
+      });
+
+      await expect(MedicalHistoryService.getPatientFrequentTags(accessToken, doctorId, patientId))
+        .rejects.toThrow('Patient not found');
+    });
+
+    it('should throw error when get frequent tags fails with error field', async () => {
+      const errorResponse = { error: 'Unauthorized access' };
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: () => Promise.resolve(errorResponse)
+      });
+
+      await expect(MedicalHistoryService.getPatientFrequentTags(accessToken, doctorId, patientId))
+        .rejects.toThrow('Unauthorized access');
+    });
+
+    it('should throw error with default message when get frequent tags fails without error details', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.reject(new Error('Invalid JSON'))
+      });
+
+      await expect(MedicalHistoryService.getPatientFrequentTags(accessToken, doctorId, patientId))
+        .rejects.toThrow('Failed to get patient frequent tags! Status: 500');
+    });
+
+    it('should handle network errors when getting patient frequent tags', async () => {
+      const networkError = new Error('Network connection failed');
+      mockFetch.mockRejectedValueOnce(networkError);
+
+      await expect(MedicalHistoryService.getPatientFrequentTags(accessToken, doctorId, patientId))
         .rejects.toThrow('Network connection failed');
     });
   });

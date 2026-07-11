@@ -1,5 +1,5 @@
 import React from "react"
-import {Avatar,Box,Button,Chip,Divider,Typography,Alert,CircularProgress,Paper,TextField,Rating} from "@mui/material"
+import {Autocomplete,Avatar,Box,Button,Chip,Divider,Typography,Alert,CircularProgress,Paper,TextField,Rating} from "@mui/material"
 import { LocalizationProvider } from "@mui/x-date-pickers"
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs"
 import { useMachines } from "#/providers/MachineProvider"
@@ -34,8 +34,38 @@ const PatientDetails: React.FC = () => {
   ) || [];
 
   const medicalHistories: MedicalHistory[] = medicalHistoryContext.medicalHistories || [];
-  
-  
+
+  const MAX_TAGS = 10;
+  const frequentTags = [...(medicalHistoryContext.frequentTags || [])].sort((a, b) => b.count - a.count);
+
+  // Tags currently being edited/added for the open note. Kept as transient input
+  // state and forwarded to the machine on save; the machine owns the persisted set.
+  const [editingTags, setEditingTags] = React.useState<string[]>([]);
+
+  // Seed the tag input from the existing note's tags when a turn's note is opened,
+  // so editing content never silently drops previously-saved tags.
+  React.useEffect(() => {
+    const selectedTurnId = medicalHistoryContext.selectedHistory?.turnId;
+    if (selectedTurnId) {
+      const existing = medicalHistories.find(h => h.turnId === selectedTurnId);
+      setEditingTags((existing?.tags ?? []).slice(0, MAX_TAGS));
+    } else {
+      setEditingTags([]);
+    }
+    // Only re-seed when the selected note changes, not on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [medicalHistoryContext.selectedHistory?.turnId]);
+
+  const handleTagsChange = (_event: React.SyntheticEvent, newValue: string[]) => {
+    const trimmedFiltered = newValue
+      .map(tag => tag.trim())
+      .filter(tag => tag.length > 0);
+    // Dedupe before capping: freeSolo lets the same value be entered twice,
+    // which would otherwise produce duplicate chips and a duplicated payload.
+    const normalized = Array.from(new Set(trimmedFiltered)).slice(0, MAX_TAGS);
+    setEditingTags(normalized);
+  };
+
   const isPatientDetailRoute = window.location.pathname === '/patient-detail';
   const hasPatientIdParam = window.location.search.includes('patientId=');
 
@@ -62,6 +92,7 @@ const PatientDetails: React.FC = () => {
         type: "UPDATE_HISTORY_ENTRY",
         historyId: existingHistory.id,
         content: medicalHistoryContext.editingContent.trim(),
+        tags: editingTags,
         accessToken: authContext.authResponse.accessToken,
         doctorId: authContext.authResponse.id
       });
@@ -70,6 +101,7 @@ const PatientDetails: React.FC = () => {
         type: "ADD_HISTORY_ENTRY_FOR_TURN",
         turnId,
         content: medicalHistoryContext.editingContent.trim(),
+        tags: editingTags,
         accessToken: authContext.authResponse.accessToken,
         doctorId: authContext.authResponse.id
       });
@@ -367,8 +399,36 @@ const PatientDetails: React.FC = () => {
           </Box>
         </Box>
 
+        <Box sx={{ px: 3, pt: 1 }}>
+          <Paper elevation={1} sx={{ p: 3 }} data-testid="frequent-tags-section">
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <History color="primary" />
+              Etiquetas frecuentes
+            </Typography>
+            <Divider sx={{ mb: 2 }} />
+            {frequentTags.length === 0 ? (
+              <Typography variant="body2" color="textSecondary" sx={{ fontStyle: 'italic' }}>
+                No hay etiquetas frecuentes para este paciente.
+              </Typography>
+            ) : (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
+                {frequentTags.map((tf, index) => (
+                  <Chip
+                    key={`${tf.tag}-${index}`}
+                    data-testid="frequent-tag-chip"
+                    label={`${tf.tag} (${tf.count})`}
+                    color="primary"
+                    variant={index === 0 ? 'filled' : 'outlined'}
+                    size={tf.count >= 5 ? 'medium' : 'small'}
+                  />
+                ))}
+              </Box>
+            )}
+          </Paper>
+        </Box>
+
         <Box className="patient-details-content">
-          
+
 
           <Box sx={{ flex: '1 1 400px', minWidth: 0 }}>
             <Paper elevation={1} sx={{ p: 3 }} className="patient-details-info-paper">
@@ -563,6 +623,35 @@ const PatientDetails: React.FC = () => {
                                   placeholder="Ingrese observaciones médicas, diagnóstico, tratamiento..."
                                   variant="outlined"
                                   size="small"
+                                />
+                                <Autocomplete
+                                  multiple
+                                  freeSolo
+                                  options={[]}
+                                  value={editingTags}
+                                  onChange={handleTagsChange}
+                                  sx={{ mt: 1 }}
+                                  renderTags={(value: readonly string[], getTagProps) =>
+                                    value.map((option: string, index: number) => (
+                                      <Chip
+                                        variant="outlined"
+                                        size="small"
+                                        label={option}
+                                        {...getTagProps({ index })}
+                                        key={`${option}-${index}`}
+                                      />
+                                    ))
+                                  }
+                                  renderInput={(params) => (
+                                    <TextField
+                                      {...params}
+                                      variant="outlined"
+                                      size="small"
+                                      label="Etiquetas"
+                                      placeholder="Agregar etiqueta"
+                                      helperText={`Máximo ${MAX_TAGS} etiquetas`}
+                                    />
+                                  )}
                                 />
                                 <Box sx={{ mt: 1, display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
                                   <Button
