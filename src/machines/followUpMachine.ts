@@ -2,12 +2,13 @@ import { createMachine, assign, fromPromise } from 'xstate';
 import { FollowUpService } from '../service/follow-up-service.service';
 import { orchestrator } from '../core/Orchestrator';
 import { UI_MACHINE_ID } from './uiMachine';
-import type { FollowUpReminder, FollowUpMonths } from '../models/FollowUpReminder';
+import type { FollowUpReminder, FollowUpMonths, DueForFollowUp } from '../models/FollowUpReminder';
 
 export const FOLLOW_UP_MACHINE_ID = 'followUp';
 export const FOLLOW_UP_MACHINE_EVENT_TYPES = [
   'CREATE_FOLLOWUP',
   'LOAD_DUE_FOLLOWUPS',
+  'LOAD_DUE_FOR_FOLLOWUP',
   'DISMISS_FOLLOWUP',
   'LOAD_PATIENT_FOLLOWUPS',
   'CLEAR_ERROR',
@@ -15,6 +16,7 @@ export const FOLLOW_UP_MACHINE_EVENT_TYPES = [
 
 interface FollowUpMachineContext {
   dueReminders: FollowUpReminder[];
+  dueForFollowUp: DueForFollowUp[];
   patientReminders: FollowUpReminder[];
   isLoading: boolean;
   error: string | null;
@@ -30,6 +32,7 @@ interface FollowUpMachineContext {
 export type FollowUpMachineEvent =
   | { type: 'CREATE_FOLLOWUP'; historyId: string; months: FollowUpMonths; accessToken: string; doctorId: string }
   | { type: 'LOAD_DUE_FOLLOWUPS'; doctorId: string; accessToken: string }
+  | { type: 'LOAD_DUE_FOR_FOLLOWUP'; doctorId: string; accessToken: string }
   | { type: 'DISMISS_FOLLOWUP'; reminderId: string; doctorId: string; accessToken: string }
   | { type: 'LOAD_PATIENT_FOLLOWUPS'; patientId: string; accessToken: string }
   | { type: 'CLEAR_ERROR' };
@@ -44,6 +47,7 @@ export const followUpMachine = createMachine(
     initial: 'idle',
     context: {
       dueReminders: [],
+      dueForFollowUp: [],
       patientReminders: [],
       isLoading: false,
       error: null,
@@ -69,6 +73,14 @@ export const followUpMachine = createMachine(
           },
           LOAD_DUE_FOLLOWUPS: {
             target: 'loadingDue',
+            actions: assign({
+              doctorId: ({ event }) => event.doctorId,
+              accessToken: ({ event }) => event.accessToken,
+              error: () => null,
+            }),
+          },
+          LOAD_DUE_FOR_FOLLOWUP: {
+            target: 'loadingDueForFollowUp',
             actions: assign({
               doctorId: ({ event }) => event.doctorId,
               accessToken: ({ event }) => event.accessToken,
@@ -167,6 +179,29 @@ export const followUpMachine = createMachine(
           },
         },
       },
+      loadingDueForFollowUp: {
+        entry: assign({ isLoading: () => true }),
+        exit: assign({ isLoading: () => false }),
+        invoke: {
+          src: 'getDueForFollowUp',
+          input: ({ context }) => ({
+            accessToken: context.accessToken!,
+            doctorId: context.doctorId!,
+          }),
+          onDone: {
+            target: 'idle',
+            actions: assign({
+              dueForFollowUp: ({ event }) => event.output,
+            }),
+          },
+          onError: {
+            target: 'idle',
+            actions: assign({
+              error: ({ event }) => `Error al cargar pacientes con seguimiento pendiente: ${event.error}`,
+            }),
+          },
+        },
+      },
       dismissing: {
         entry: assign({ isLoading: () => true }),
         exit: assign({ isLoading: () => false }),
@@ -235,6 +270,10 @@ export const followUpMachine = createMachine(
       getDueReminders: fromPromise(
         async ({ input }: { input: { accessToken: string; doctorId: string } }) =>
           FollowUpService.getDueReminders(input.accessToken, input.doctorId),
+      ),
+      getDueForFollowUp: fromPromise(
+        async ({ input }: { input: { accessToken: string; doctorId: string } }) =>
+          FollowUpService.getDueForFollowUp(input.accessToken, input.doctorId),
       ),
       dismissReminder: fromPromise(
         async ({ input }: { input: { accessToken: string; doctorId: string; reminderId: string } }) => {

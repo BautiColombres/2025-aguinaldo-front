@@ -4,6 +4,7 @@ import type {
   FollowUpReminder,
   CreateFollowUpReminderRequest,
   FollowUpMonths,
+  DueForFollowUp,
 } from '../models/FollowUpReminder';
 import type { ApiErrorResponse } from '../models/MedicalHistory';
 
@@ -115,6 +116,41 @@ export class FollowUpService {
       }
     } catch (error) {
       logger.error('Failed to dismiss follow-up reminder:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Phase F3 — patients who should return and have no upcoming turn. Per OQ-4
+   * the DTO carries only the recommended control date (`scheduledFor`) and the
+   * last attended turn (`lastTurnDate`); no overdue field.
+   */
+  static async getDueForFollowUp(
+    accessToken: string,
+    doctorId: string,
+  ): Promise<DueForFollowUp[]> {
+    const url = buildApiUrl(
+      API_CONFIG.ENDPOINTS.GET_DUE_FOR_FOLLOWUP.replace('{doctorId}', doctorId),
+    );
+
+    try {
+      const response = await fetch(url, {
+        ...getAuthenticatedFetchOptions(accessToken),
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.message ||
+            errorData?.error ||
+            `Failed to get patients due for follow-up! Status: ${response.status}`,
+        );
+      }
+
+      return await response.json();
+    } catch (error) {
+      logger.error('Failed to get patients due for follow-up:', error);
       throw error;
     }
   }

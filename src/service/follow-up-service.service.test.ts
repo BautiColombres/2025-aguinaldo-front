@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { FollowUpService } from './follow-up-service.service';
-import type { FollowUpReminder } from '../models/FollowUpReminder';
+import type { FollowUpReminder, DueForFollowUp } from '../models/FollowUpReminder';
 
 vi.mock('../../config/api', () => ({
   API_CONFIG: {
@@ -10,6 +10,7 @@ vi.mock('../../config/api', () => ({
       GET_FOLLOWUPS: '/api/doctors/{doctorId}/followups',
       DISMISS_FOLLOWUP: '/api/doctors/{doctorId}/followups/{reminderId}/dismiss',
       GET_PATIENT_FOLLOWUPS: '/api/patients/{patientId}/followups',
+      GET_DUE_FOR_FOLLOWUP: '/api/doctors/{doctorId}/patients/due-for-followup',
     },
     DEFAULT_HEADERS: {
       'Content-Type': 'application/json',
@@ -164,6 +165,60 @@ describe('FollowUpService', () => {
 
       await expect(FollowUpService.dismissReminder(accessToken, doctorId, reminderId))
         .rejects.toThrow('Reminder not found');
+    });
+  });
+
+  describe('getDueForFollowUp', () => {
+    const mockDue: DueForFollowUp = {
+      patientId: 'patient-1',
+      patientName: 'John',
+      patientSurname: 'Doe',
+      scheduledFor: '2024-08-10',
+      lastTurnDate: '2024-05-10T10:00:00Z',
+    };
+
+    it('GETs the due-for-followup URL with the auth header and parses the list', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockDue]) });
+
+      const result = await FollowUpService.getDueForFollowUp(accessToken, doctorId);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/doctors/doctor-1/patients/due-for-followup',
+        expect.objectContaining({
+          method: 'GET',
+          headers: expect.objectContaining({ Authorization: `Bearer ${accessToken}` }),
+        }),
+      );
+      expect(result).toEqual([mockDue]);
+    });
+
+    it('returns an empty array when no patients are due', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) });
+
+      const result = await FollowUpService.getDueForFollowUp(accessToken, doctorId);
+      expect(result).toEqual([]);
+    });
+
+    it('throws the mapped error body on failure', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: () => Promise.resolve({ error: 'Unauthorized access' }),
+      });
+
+      await expect(FollowUpService.getDueForFollowUp(accessToken, doctorId))
+        .rejects.toThrow('Unauthorized access');
+    });
+
+    it('throws a default error when the body carries no details', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.reject(new Error('Invalid JSON')),
+      });
+
+      await expect(FollowUpService.getDueForFollowUp(accessToken, doctorId))
+        .rejects.toThrow('Failed to get patients due for follow-up! Status: 500');
     });
   });
 

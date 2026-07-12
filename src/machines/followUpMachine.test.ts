@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createActor } from 'xstate';
-import type { FollowUpReminder } from '../models/FollowUpReminder';
+import type { FollowUpReminder, DueForFollowUp } from '../models/FollowUpReminder';
 
 // Mock dependencies BEFORE importing the machine
 vi.mock('#/core/Orchestrator', () => ({
@@ -17,12 +17,22 @@ vi.mock('../service/follow-up-service.service', () => ({
     getDueReminders: vi.fn(),
     dismissReminder: vi.fn(),
     getPatientReminders: vi.fn(),
+    getDueForFollowUp: vi.fn(),
   },
 }));
 
 import { followUpMachine } from './followUpMachine';
 import { FollowUpService } from '../service/follow-up-service.service';
 import { orchestrator } from '#/core/Orchestrator';
+
+const due = (over: Partial<DueForFollowUp> = {}): DueForFollowUp => ({
+  patientId: 'patient-1',
+  patientName: 'John',
+  patientSurname: 'Doe',
+  scheduledFor: '2024-08-10',
+  lastTurnDate: '2024-05-10T10:00:00Z',
+  ...over,
+});
 
 const reminder = (over: Partial<FollowUpReminder> = {}): FollowUpReminder => ({
   id: 'reminder-1',
@@ -56,6 +66,7 @@ describe('followUpMachine', () => {
   it('starts in idle with empty context', () => {
     expect(actor.getSnapshot().value).toBe('idle');
     expect(actor.getSnapshot().context.dueReminders).toEqual([]);
+    expect(actor.getSnapshot().context.dueForFollowUp).toEqual([]);
     expect(actor.getSnapshot().context.patientReminders).toEqual([]);
     expect(actor.getSnapshot().context.isLoading).toBe(false);
     expect(actor.getSnapshot().context.error).toBe(null);
@@ -140,6 +151,38 @@ describe('followUpMachine', () => {
 
       expect(actor.getSnapshot().context.error).toBeTruthy();
       expect(actor.getSnapshot().context.dueReminders).toEqual([]);
+    });
+  });
+
+  describe('LOAD_DUE_FOR_FOLLOWUP', () => {
+    it('populates dueForFollowUp on success', async () => {
+      const list = [due({ patientId: 'p1' }), due({ patientId: 'p2', patientName: 'Jane' })];
+      vi.mocked(FollowUpService.getDueForFollowUp).mockResolvedValueOnce(list);
+
+      actor.send({ type: 'LOAD_DUE_FOR_FOLLOWUP', doctorId: 'doctor-1', accessToken: 'token-123' });
+
+      expect(actor.getSnapshot().value).toBe('loadingDueForFollowUp');
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(FollowUpService.getDueForFollowUp).toHaveBeenCalledWith('token-123', 'doctor-1');
+      expect(actor.getSnapshot().context.dueForFollowUp).toEqual(list);
+      expect(actor.getSnapshot().context.error).toBe(null);
+    });
+
+    it('sets an error and preserves the list on failure', async () => {
+      vi.mocked(FollowUpService.getDueForFollowUp).mockRejectedValueOnce(new Error('boom'));
+
+      actor.send({ type: 'LOAD_DUE_FOR_FOLLOWUP', doctorId: 'doctor-1', accessToken: 'token-123' });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(actor.getSnapshot().context.error).toBeTruthy();
+      expect(actor.getSnapshot().context.dueForFollowUp).toEqual([]);
     });
   });
 

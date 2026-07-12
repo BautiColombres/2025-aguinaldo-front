@@ -12,6 +12,7 @@ import ViewTurns from './components/Patient/ViewTurns'
 import ModifyTurn from './components/Patient/ModifyTurn'
 import EnableHours from './components/Doctor/EnableHours/EnableHours'
 import ViewPatients from './components/Doctor/ViewPatients/ViewPatients'
+import FollowUpPanel from './components/Doctor/FollowUpPanel/FollowUpPanel'
 import DoctorViewTurns from './components/Doctor/DoctorViewTurns/DoctorViewTurns'
 import PatientDetails from './components/Doctor/PatientDetails/PatientDetails'
 import SnackbarAlert from './components/shared/SnackbarAlert/SnackbarAlert'
@@ -67,6 +68,7 @@ function AppContent() {
         <>
           <Route path="/doctor/enable-hours" element={<EnableHours />} />
           <Route path="/doctor/view-patients" element={<ViewPatients />} />
+          <Route path="/doctor/follow-up-panel" element={<FollowUpPanel />} />
           <Route path="/doctor/view-turns" element={<DoctorViewTurns />} />
           <Route path="/doctor/metrics" element={<DoctorMetrics />} />
           <Route path="/doctor/badges" element={<DoctorBadges />} />
