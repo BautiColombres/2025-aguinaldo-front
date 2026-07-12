@@ -156,6 +156,7 @@ describe('MachineProvider', () => {
     filesState: null,
     ratingState: null,
     badgeState: null,
+    followUpState: null,
   };
 
   const mockSends = {
@@ -169,6 +170,7 @@ describe('MachineProvider', () => {
     filesSend: vi.fn(),
     ratingSend: vi.fn(),
     badgeSend: vi.fn(),
+    followUpSend: vi.fn(),
   };
 
   beforeEach(() => {
@@ -197,6 +199,8 @@ describe('MachineProvider', () => {
           return { state: mockStates.ratingState, send: mockSends.ratingSend };
         case 'badge-machine':
           return { state: mockStates.badgeState, send: mockSends.badgeSend };
+        case 'followUp':
+          return { state: mockStates.followUpState, send: mockSends.followUpSend };
         default:
           return { state: null, send: vi.fn() };
       }
@@ -327,6 +331,8 @@ describe('MachineProvider', () => {
       ratingSend: mockSends.ratingSend,
       badgeState: mockStates.badgeState,
       badgeSend: mockSends.badgeSend,
+      followUpState: mockStates.followUpState,
+      followUpSend: mockSends.followUpSend,
     });
   });
 });

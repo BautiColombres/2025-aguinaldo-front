@@ -55,6 +55,7 @@ const setup = ({
   const medicalHistorySend = vi.fn();
   const doctorSend = vi.fn();
   const dataSend = vi.fn();
+  const followUpSend = vi.fn();
 
   (useMachines as unknown as Mock).mockReturnValue({
     doctorState: {
@@ -76,6 +77,15 @@ const setup = ({
       },
     },
     medicalHistorySend,
+    followUpState: {
+      context: {
+        dueReminders: [],
+        patientReminders: [],
+        isLoading: false,
+        error: null,
+      },
+    },
+    followUpSend,
   });
 
   (useDataMachine as unknown as Mock).mockReturnValue({
@@ -97,7 +107,7 @@ const setup = ({
   });
 
   render(<PatientDetails />);
-  return { medicalHistorySend };
+  return { medicalHistorySend, followUpSend };
 };
 
 const baseHistory = (over: Partial<MedicalHistory>): MedicalHistory => ({
@@ -281,5 +291,62 @@ describe('PatientDetails — frequent tags cloud (F1-F5)', () => {
     const section = screen.getByTestId('frequent-tags-section');
     expect(within(section).queryAllByTestId('frequent-tag-chip')).toHaveLength(0);
     expect(within(section).getByText(/No hay etiquetas frecuentes/i)).toBeInTheDocument();
+  });
+});
+
+describe('PatientDetails — follow-up reminder ("Control en X meses") (F2-F4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders the follow-up control selector only when a saved note exists for the turn', () => {
+    setup({
+      medicalHistories: [baseHistory({ id: 'h1', turnId: 'turn-1' })],
+    });
+
+    expect(screen.getByTestId('followup-section-turn-1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Crear recordatorio/i })).toBeInTheDocument();
+  });
+
+  it('does not render the selector for a turn without a saved note', () => {
+    setup({ medicalHistories: [] });
+
+    expect(screen.queryByTestId('followup-section-turn-1')).not.toBeInTheDocument();
+  });
+
+  it('dispatches CREATE_FOLLOWUP with the default interval (3) and the note historyId', () => {
+    const { followUpSend } = setup({
+      medicalHistories: [baseHistory({ id: 'h1', turnId: 'turn-1' })],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Crear recordatorio/i }));
+
+    expect(followUpSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'CREATE_FOLLOWUP',
+        historyId: 'h1',
+        months: 3,
+        accessToken: 'token-123',
+        doctorId: 'doctor-1',
+      }),
+    );
+  });
+
+  it('dispatches CREATE_FOLLOWUP with the selected interval (6 meses)', async () => {
+    const user = userEvent.setup();
+    const { followUpSend } = setup({
+      medicalHistories: [baseHistory({ id: 'h1', turnId: 'turn-1' })],
+    });
+
+    await user.click(screen.getByRole('button', { name: /^6 meses$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Crear recordatorio/i }));
+
+    expect(followUpSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'CREATE_FOLLOWUP',
+        historyId: 'h1',
+        months: 6,
+      }),
+    );
   });
 });

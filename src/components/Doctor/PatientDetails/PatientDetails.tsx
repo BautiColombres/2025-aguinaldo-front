@@ -1,5 +1,6 @@
 import React from "react"
-import {Autocomplete,Avatar,Box,Button,Chip,Divider,Typography,Alert,CircularProgress,Paper,TextField,Rating} from "@mui/material"
+import {Autocomplete,Avatar,Box,Button,Chip,Divider,Typography,Alert,CircularProgress,Paper,TextField,Rating,ToggleButton,ToggleButtonGroup} from "@mui/material"
+import type { FollowUpMonths } from "#/models/FollowUpReminder"
 import { LocalizationProvider } from "@mui/x-date-pickers"
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs"
 import { useMachines } from "#/providers/MachineProvider"
@@ -15,7 +16,7 @@ import type { MedicalHistory } from "#/models/MedicalHistory"
 
 const PatientDetails: React.FC = () => {
   const { dataState, dataSend } = useDataMachine();
-  const { doctorState, doctorSend, medicalHistoryState, medicalHistorySend } = useMachines();
+  const { doctorState, doctorSend, medicalHistoryState, medicalHistorySend, followUpSend } = useMachines();
   const { authState } = useAuthMachine();
 
   const doctorContext = doctorState.context;
@@ -110,6 +111,24 @@ const PatientDetails: React.FC = () => {
 
   const handleCancelEdit = () => {
     medicalHistorySend({ type: "CLEAR_SELECTION" });
+  };
+
+  // "Control en X meses" — per-turn selected interval (defaults to 3). The
+  // reminder is anchored to the note's historyId; patient/doctor/scheduledFor
+  // are derived server-side (body carries months only).
+  const [followUpMonths, setFollowUpMonths] = React.useState<Record<string, FollowUpMonths>>({});
+
+  const handleCreateFollowUp = (historyId: string, turnId: string) => {
+    if (!authContext?.authResponse?.accessToken || !authContext?.authResponse?.id) {
+      return;
+    }
+    followUpSend({
+      type: "CREATE_FOLLOWUP",
+      historyId,
+      months: followUpMonths[turnId] ?? 3,
+      accessToken: authContext.authResponse.accessToken,
+      doctorId: authContext.authResponse.id,
+    });
   };
 
   const getMedicalHistoryForTurn = (turnId: string): string => {
@@ -559,6 +578,7 @@ const PatientDetails: React.FC = () => {
                     .sort((a, b) => dayjsArgentina(b.scheduledAt).valueOf() - dayjsArgentina(a.scheduledAt).valueOf())
                     .map((turn) => {
                       const currentHistory = getMedicalHistoryForTurn(turn.id);
+                      const existingHistoryEntry = medicalHistories.find(h => h.turnId === turn.id);
                       const isEditing = medicalHistoryContext.selectedHistory?.turnId === turn.id;
                       const fileStatus = getFileStatus(turn.id);
                       const fileInfo = getTurnFileInfo(turn.id);
@@ -717,6 +737,41 @@ const PatientDetails: React.FC = () => {
                                 >
                                   {currentHistory ? 'Editar Historia' : 'Agregar Historia'}
                                 </Button>
+
+                                {existingHistoryEntry && (
+                                  <Box
+                                    data-testid={`followup-section-${turn.id}`}
+                                    sx={{ mt: 2, pt: 2, borderTop: '1px dashed #e2e8f0' }}
+                                  >
+                                    <Typography variant="body2" sx={{ mb: 1, fontWeight: 500 }}>
+                                      Programar control
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
+                                      <ToggleButtonGroup
+                                        exclusive
+                                        size="small"
+                                        value={followUpMonths[turn.id] ?? 3}
+                                        onChange={(_e, value: FollowUpMonths | null) => {
+                                          if (value != null) {
+                                            setFollowUpMonths(prev => ({ ...prev, [turn.id]: value }));
+                                          }
+                                        }}
+                                        aria-label="Intervalo de control"
+                                      >
+                                        <ToggleButton value={3}>3 meses</ToggleButton>
+                                        <ToggleButton value={6}>6 meses</ToggleButton>
+                                        <ToggleButton value={12}>12 meses</ToggleButton>
+                                      </ToggleButtonGroup>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        onClick={() => handleCreateFollowUp(existingHistoryEntry.id, turn.id)}
+                                      >
+                                        Crear recordatorio
+                                      </Button>
+                                    </Box>
+                                  </Box>
+                                )}
                               </Box>
                             )}
                           </Box>

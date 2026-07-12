@@ -96,6 +96,11 @@ export const API_CONFIG = {
     GET_PATIENT_HISTORY_BY_DOCTOR: '/api/doctors/{doctorId}/patients/{patientId}/medical-history',
     GET_PATIENT_TAGS: '/api/doctors/{doctorId}/patients/{patientId}/tags',
 
+    CREATE_FOLLOWUP: '/api/doctors/{doctorId}/medical-history/{historyId}/followup',
+    GET_FOLLOWUPS: '/api/doctors/{doctorId}/followups',
+    DISMISS_FOLLOWUP: '/api/doctors/{doctorId}/followups/{reminderId}/dismiss',
+    GET_PATIENT_FOLLOWUPS: '/api/patients/{patientId}/followups',
+
     GET_PROFILE: '/api/profile/{profileId}',
     UPDATE_PROFILE: '/api/profile/{profileId}',
     DEACTIVATE_ACCOUNT: '/api/profile/me/deactivate',
