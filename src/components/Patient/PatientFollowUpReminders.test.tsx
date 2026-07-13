@@ -75,9 +75,7 @@ describe('PatientFollowUpReminders (F2-F4b)', () => {
   it('renders the pending reminders with generic copy and the control date', () => {
     setup({ patientReminders: [reminder({ scheduledFor: '2024-08-10' })] });
 
-    // Generic copy — never a clinical tag/motive
     expect(screen.getByText(/Tu profesional te recomienda un control/i)).toBeInTheDocument();
-    // Recommended control date, rendered without a timezone shift for a date-only value
     expect(screen.getByText(/10\/08\/2024/)).toBeInTheDocument();
   });
 

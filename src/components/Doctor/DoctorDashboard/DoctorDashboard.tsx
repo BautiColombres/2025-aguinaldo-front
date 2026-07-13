@@ -43,8 +43,6 @@ const DoctorDashboard: React.FC = () => {
   const doctorAccessToken = doctorContext?.accessToken;
   const doctorId = doctorContext?.doctorId;
 
-  // F3-F2 — load the "patients who should return" count on mount. useEffect (not a
-  // render-phase dispatch) so StrictMode's double render doesn't double-fire.
   useEffect(() => {
     if (doctorAccessToken && doctorId) {
       followUpSend({ type: "LOAD_DUE_FOR_FOLLOWUP", doctorId, accessToken: doctorAccessToken });

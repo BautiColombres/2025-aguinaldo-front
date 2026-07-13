@@ -281,8 +281,6 @@ describe('MachineProvider', () => {
     expect(useStateMachine).toHaveBeenCalledWith('notification-machine');
   });
 
-  // FBUG-H1: doctorMachine must be registered exactly once (a duplicate
-  // registerMachine block previously registered it twice).
   it('should register doctorMachine exactly once (no duplicate registration)', async () => {
     vi.resetModules();
     const { orchestrator } = await import('../core/Orchestrator');

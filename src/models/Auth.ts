@@ -36,9 +36,6 @@ export interface SignInResponse {
   role: "PATIENT" | "DOCTOR" | "ADMIN";
   status: string;
   accessToken: string;
-  // FSEC-H1 — the refresh token now lives only in an httpOnly cookie and is no
-  // longer read/persisted by the frontend. Optional during the Stage-1 compat
-  // window (backend still returns it in the body); removed in Stage 3.
   refreshToken?: string;
 }
 

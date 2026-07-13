@@ -18,12 +18,6 @@ import { useMachines } from '#/providers/MachineProvider';
 import type { DueForFollowUp } from '#/models/FollowUpReminder';
 import './FollowUpPanel.css';
 
-/**
- * Phase F3 — dedicated "pacientes que deben volver" panel. Lists patients who
- * should return and have no upcoming turn, showing ONLY the recommended control
- * date (`scheduledFor`). Per OQ-4 there is intentionally NO overdue chip, no
- * severity/urgency colour and no "atrasado" wording.
- */
 const FollowUpPanel: React.FC = () => {
   const { followUpState, followUpSend, doctorState, doctorSend, uiSend } = useMachines();
 
@@ -40,16 +34,12 @@ const FollowUpPanel: React.FC = () => {
     if (accessToken && doctorId) {
       followUpSend({ type: 'LOAD_DUE_FOR_FOLLOWUP', doctorId, accessToken });
     }
-    // Load once per doctor/session change; deliberately not on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, doctorId]);
 
   const getInitials = (name: string, surname: string) =>
     ((name?.[0] || '') + (surname?.[0] || '')).toUpperCase();
 
-  // Date-only-safe: slice the date portion first so an ISO datetime with a UTC
-  // offset (e.g. lastTurnDate "…T10:00:00Z") is not day-shifted by the local tz,
-  // matching how the date-only `scheduledFor` is rendered.
   const formatDateOnly = (value: string) => dayjs(value.slice(0, 10)).format('DD/MM/YYYY');
 
   const formatLastVisit = (lastTurnDate: string | null) =>

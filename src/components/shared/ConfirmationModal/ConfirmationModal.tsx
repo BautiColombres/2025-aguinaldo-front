@@ -16,10 +16,6 @@ export default function ConfirmationModal() {
 
     const dialogData = uiState.context.confirmDialog;
 
-    // FBUG-M2 — prevent double-submit. `pendingRef` guards against synchronous
-    // re-entry (a second click before React re-renders); `pending` drives the
-    // disabled state on the confirm button. The dialog is only asked to close
-    // AFTER any async action resolves, so it stays open until the result is in.
     const [pending, setPending] = useState(false);
     const pendingRef = useRef(false);
 
@@ -42,17 +38,14 @@ export default function ConfirmationModal() {
                     turnId: dialogData.turnId
                 });
             } else if (action === 'no_show_turn' && dialogData.turnId) {
-                // For no-show, we use the no-show endpoint
                 turnSend({
                     type: "NO_SHOW_TURN",
                     turnId: dialogData.turnId
                 });
             } else if (action === 'approve' && dialogData.requestId) {
-                // FBUG-M4 — guard the access token instead of a non-null assertion.
                 if (!user.accessToken) return;
                 await approveModifyRequest(dialogData.requestId, user.accessToken);
             } else if (action === 'reject' && dialogData.requestId) {
-                // FBUG-M4 — guard the access token instead of a non-null assertion.
                 if (!user.accessToken) return;
                 await rejectModifyRequest(dialogData.requestId, user.accessToken);
             } else if (action === 'delete_file' && dialogData.turnId) {

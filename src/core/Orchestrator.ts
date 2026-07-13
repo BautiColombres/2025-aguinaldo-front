@@ -1,13 +1,7 @@
 import { createActor, type AnyStateMachine, type AnyActor } from 'xstate';
 import { logger } from '../utils/logger';
 
-// FSEC-L1 — never let token-bearing event payloads reach the console, even in dev.
-// Any key matching a sensitive name is replaced before logging; the original event
-// object is left untouched (a redacted copy is produced).
 const REDACTED = '[REDACTED]';
-// FSEC-L1 — substring/pattern match (not exact) so that camelCase, snake_case and
-// prefixed/suffixed variants are all covered: newPassword, currentPassword,
-// confirmPassword, access_token, refresh_token, authorization, apiKey, etc.
 const SENSITIVE_KEY_PATTERNS = [
   'token',
   'password',
@@ -66,8 +60,6 @@ export class Orchestrator {
   private debug: boolean = false;
 
   constructor(options?: { debug?: boolean }) {
-    // FSEC-L1 — debug logging is force-disabled outside a DEV build so token-bearing
-    // events can never be logged in production, regardless of the `debug` option.
     this.debug = Boolean(options?.debug) && Boolean(import.meta.env.DEV);
   }
 
@@ -218,8 +210,6 @@ export class Orchestrator {
         try {
           listener(event);
         } catch (error) {
-          // FSEC-L1 — route through the DEV-gated logger so listener errors never
-          // reach the raw console in a production build.
           logger.error(`[Orchestrator] Error in event listener for ${eventType}:`, error);
         }
       });

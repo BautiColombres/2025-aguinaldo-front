@@ -8,16 +8,7 @@ import type {
 } from '../models/FollowUpReminder';
 import type { ApiErrorResponse } from '../models/MedicalHistory';
 
-/**
- * Phase F2 — follow-up reminder network layer. All calls go through
- * `config/api.ts` (`buildApiUrl` + `getAuthenticatedFetchOptions`), mirroring
- * `MedicalHistoryService`. Error bodies are mapped to a thrown Error.
- */
 export class FollowUpService {
-  /**
-   * Create a "control en X meses" reminder for a note. The request body carries
-   * the interval ONLY — patient/doctor/scheduledFor are derived server-side.
-   */
   static async createReminder(
     accessToken: string,
     doctorId: string,
@@ -55,9 +46,6 @@ export class FollowUpService {
     }
   }
 
-  /**
-   * Get the doctor's due reminders ("due + no future turn"). No overdue field.
-   */
   static async getDueReminders(
     accessToken: string,
     doctorId: string,
@@ -86,9 +74,6 @@ export class FollowUpService {
     }
   }
 
-  /**
-   * Dismiss a reminder (ownership-scoped server-side).
-   */
   static async dismissReminder(
     accessToken: string,
     doctorId: string,
@@ -120,11 +105,6 @@ export class FollowUpService {
     }
   }
 
-  /**
-   * Phase F3 — patients who should return and have no upcoming turn. Per OQ-4
-   * the DTO carries only the recommended control date (`scheduledFor`) and the
-   * last attended turn (`lastTurnDate`); no overdue field.
-   */
   static async getDueForFollowUp(
     accessToken: string,
     doctorId: string,
@@ -155,10 +135,6 @@ export class FollowUpService {
     }
   }
 
-  /**
-   * Patient-owned read: the patient's own non-dismissed reminders (generic DTO,
-   * no clinical tag/motive).
-   */
   static async getPatientReminders(
     accessToken: string,
     patientId: string,

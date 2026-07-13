@@ -253,7 +253,6 @@ describe('medicalHistoryMachine', () => {
         'doctor-1',
         { turnId: 'turn-1', content: 'New medical history', tags: ['diabetes', 'control'] }
       );
-      // tags input is reset after a successful add
       expect(actor.getSnapshot().context.newHistoryTags).toEqual([]);
     });
   });
@@ -485,8 +484,6 @@ describe('medicalHistoryMachine', () => {
   });
 
   describe('frequentTags refresh after mutations', () => {
-    // Loads a patient through the folded loader so currentPatientId + doctorId are
-    // in context and an initial frequentTags set is present.
     async function loadPatientWithTags(initialTags: { tag: string; count: number }[]) {
       vi.mocked(MedicalHistoryService.getPatientMedicalHistoryByDoctor).mockResolvedValueOnce([mockMedicalHistory]);
       vi.mocked(MedicalHistoryService.getPatientFrequentTags).mockResolvedValueOnce(initialTags);
@@ -508,7 +505,6 @@ describe('medicalHistoryMachine', () => {
       expect(actor.getSnapshot().context.frequentTags).toEqual([{ tag: 'diabetes', count: 1 }]);
 
       vi.mocked(MedicalHistoryService.addMedicalHistory).mockResolvedValueOnce(mockMedicalHistory);
-      // The post-mutation reload re-reads histories AND the frequent-tags cloud.
       vi.mocked(MedicalHistoryService.getPatientMedicalHistoryByDoctor).mockResolvedValueOnce([mockMedicalHistory]);
       vi.mocked(MedicalHistoryService.getPatientFrequentTags).mockResolvedValueOnce([
         { tag: 'diabetes', count: 1 },
@@ -528,7 +524,6 @@ describe('medicalHistoryMachine', () => {
         expect(actor.getSnapshot().value).toBe('idle');
       });
 
-      // Called once on load, once on the mutation-success reload.
       expect(MedicalHistoryService.getPatientFrequentTags).toHaveBeenCalledTimes(2);
       expect(MedicalHistoryService.getPatientFrequentTags).toHaveBeenLastCalledWith('token-123', 'doctor-1', 'patient-1');
       expect(actor.getSnapshot().context.frequentTags).toEqual([
@@ -587,7 +582,6 @@ describe('medicalHistoryMachine', () => {
     });
 
     it('does not attempt a reload when there is no selected patient in context', async () => {
-      // ADD without a prior patient load: currentPatientId stays null, so no reload / tags refetch.
       vi.mocked(MedicalHistoryService.addMedicalHistory).mockResolvedValueOnce(mockMedicalHistory);
 
       actor.send({

@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createActor } from 'xstate';
 import type { FollowUpReminder, DueForFollowUp } from '../models/FollowUpReminder';
 
-// Mock dependencies BEFORE importing the machine
 vi.mock('#/core/Orchestrator', () => ({
   orchestrator: {
     send: vi.fn(),

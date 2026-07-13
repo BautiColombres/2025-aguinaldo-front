@@ -126,8 +126,6 @@ describe('uiMachine', () => {
       });
     });
 
-    // FBUG-H5: patientId must be parsed with URLSearchParams so extra/ordered
-    // query params do not corrupt the value.
     it('should parse patientId via URLSearchParams when extra params follow it (initial path)', () => {
       actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
       actor.start();
@@ -351,8 +349,6 @@ describe('uiMachine', () => {
       });
     });
 
-    // FBUG-H5: NAVIGATE must parse patientId with URLSearchParams so extra/ordered
-    // query params do not corrupt the value.
     it('should parse patientId via URLSearchParams when extra params follow it (NAVIGATE)', () => {
       actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
       actor.start();
@@ -389,8 +385,6 @@ describe('uiMachine', () => {
       });
     });
 
-    // FBUG-C2: NAVIGATE must update currentPath immutably via assign (new context),
-    // not mutate the previous context object in place.
     it('should produce a new context via assign instead of mutating the previous one', () => {
       actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
       actor.start();
@@ -408,15 +402,11 @@ describe('uiMachine', () => {
 
       const contextAfter = actor.getSnapshot().context;
 
-      // A new context object must be produced by assign.
       expect(contextAfter).not.toBe(contextBefore);
-      // The previously-captured context must NOT have been mutated in place.
       expect(contextBefore.currentPath).toBe('/home');
-      // The new context reflects the navigation.
       expect(contextAfter.currentPath).toBe('/profile');
     });
 
-    // FBUG-C2: the navigate() side-effect runs exactly once with the target path.
     it('should call navigate exactly once with the target path', () => {
       actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
       actor.start();
@@ -499,9 +489,6 @@ describe('uiMachine', () => {
       expect(snackbar.severity).toBe('info');
     });
 
-    // FBUG-L4 — the machine no longer runs a hand-rolled auto-close timer; auto-hide
-    // is delegated to MUI's autoHideDuration in SnackbarAlert. The machine must NOT
-    // schedule a setTimeout that sends CLOSE_SNACKBAR.
     it('should NOT schedule a machine-side auto-close timer (FBUG-L4)', () => {
       actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
       actor.start();
@@ -514,7 +501,6 @@ describe('uiMachine', () => {
 
       expect(actor.getSnapshot().context.snackbar.open).toBe(true);
 
-      // Fast-forward well past the old 6s window: no timer-driven CLOSE_SNACKBAR.
       vi.advanceTimersByTime(6000);
 
       expect(mockOrchestrator.send).not.toHaveBeenCalledWith({ type: 'CLOSE_SNACKBAR' });
@@ -808,7 +794,6 @@ describe('uiMachine', () => {
       expect(context.confirmDialog.open).toBe(true);
     });
 
-    // FBUG-L4 — rapid successive snackbars must not stack/leak machine timers.
     it('should not stack machine timers across rapid snackbars (FBUG-L4)', () => {
       actor = createActor(uiMachine, { input: { navigate: vi.fn() } });
       actor.start();
@@ -829,7 +814,6 @@ describe('uiMachine', () => {
 
       vi.advanceTimersByTime(6000);
 
-      // No hand-rolled timers => the machine never auto-sends CLOSE_SNACKBAR.
       expect(mockOrchestrator.send).not.toHaveBeenCalledWith({ type: 'CLOSE_SNACKBAR' });
       expect(actor.getSnapshot().context.snackbar.message).toBe('Second message');
     });

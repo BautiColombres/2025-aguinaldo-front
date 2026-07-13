@@ -6,12 +6,7 @@ import { useAuthMachine } from "#/providers/AuthProvider";
 import type { FollowUpReminder } from "#/models/FollowUpReminder";
 import { formatDate } from "#/utils/dateTimeUtils";
 
-// Patient-facing follow-up reminders (F2-F4b — BASELINE, minimal).
-// HARD PHI RULE: copy is GENERIC — it shows only the recommended control date,
-// never the clinical tag/motive behind the reminder.
 const formatControlDate = (value: string): string => {
-  // scheduledFor is a date-only LocalDate ("YYYY-MM-DD"); format it directly to
-  // avoid a timezone conversion shifting the day.
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const [y, m, d] = value.split('-');
     return `${d}/${m}/${y}`;
@@ -31,7 +26,6 @@ const PatientFollowUpReminders: React.FC = () => {
     if (accessToken && patientId) {
       followUpSend({ type: "LOAD_PATIENT_FOLLOWUPS", patientId, accessToken });
     }
-    // Load once when auth is available.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, patientId]);
 

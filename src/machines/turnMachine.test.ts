@@ -930,9 +930,6 @@ describe('turnMachine', () => {
       (window as any).location = originalLocation;
     });
 
-    // FBUG-H2: validation must happen inside the fromPromise body, not in the
-    // actor `input` builder. A null selectedTime must NOT throw synchronously and
-    // crash the parent actor; it must surface a handled error and keep the actor alive.
     it('should not crash the actor when selectedTime is null (validation in actor body)', async () => {
       mockTurnService.getAvailableDates.mockResolvedValue(mockAvailableDates);
 
@@ -973,7 +970,6 @@ describe('turnMachine', () => {
         path: ['modifyTurn', 'selectedDate'],
         value: dayjs('2025-10-16'),
       });
-      // No time selected.
       actor.send({
         type: 'UPDATE_FORM',
         path: ['modifyTurn', 'selectedTime'],
@@ -982,23 +978,18 @@ describe('turnMachine', () => {
 
       actor.send({ type: 'SUBMIT_MODIFY_REQUEST' });
 
-      // The actor must NOT crash: it surfaces a handled error and stays alive
-      // (status 'active'), rather than the parent faulting from a throw in `input`.
       await vi.waitFor(() => {
         expect(actor.getSnapshot().context.modifyError).toBeTruthy();
       });
       expect(actor.getSnapshot().status).toBe('active');
       expect(mockTurnModifyService.createModifyRequest).not.toHaveBeenCalled();
 
-      // Still responsive to further events (proves the actor is alive).
       expect(() => actor.send({ type: 'DATA_LOADED' })).not.toThrow();
       expect(actor.getSnapshot().status).toBe('active');
 
       (window as any).location = originalLocation;
     });
 
-    // FBUG-H2: selectedTime format must be validated before split('T'); an invalid
-    // format must reject gracefully (onError) and never reach the service.
     it('should reject gracefully when selectedTime has an invalid format', async () => {
       mockTurnService.getAvailableDates.mockResolvedValue(mockAvailableDates);
 
@@ -1039,7 +1030,6 @@ describe('turnMachine', () => {
         path: ['modifyTurn', 'selectedDate'],
         value: dayjs('2025-10-16'),
       });
-      // Invalid time format: no 'T' separator to split on.
       actor.send({
         type: 'UPDATE_FORM',
         path: ['modifyTurn', 'selectedTime'],
@@ -1048,8 +1038,6 @@ describe('turnMachine', () => {
 
       actor.send({ type: 'SUBMIT_MODIFY_REQUEST' });
 
-      // Invalid format rejects gracefully via onError; the service is never called
-      // and the actor stays alive.
       await vi.waitFor(() => {
         expect(actor.getSnapshot().context.modifyError).toBeTruthy();
       });
@@ -1197,7 +1185,6 @@ describe('turnMachine - FBUG-H3: dead RESERVE_TURN flow removed', () => {
     actor.start();
     const before = actor.getSnapshot().value;
 
-    // Casting through unknown: RESERVE_TURN is no longer part of the event union.
     actor.send({ type: 'RESERVE_TURN', turnId: 'turn-1' } as unknown as never);
 
     const snapshot = actor.getSnapshot();

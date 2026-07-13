@@ -299,8 +299,6 @@ describe('Orchestrator', () => {
     });
   });
 
-  // FSEC-L1 — debug logging must never surface token-bearing events, and must be a
-  // no-op outside a DEV build.
   describe('FSEC-L1 token redaction and production gate', () => {
     it('redacts token fields from logged event payloads when debug is enabled', () => {
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -331,7 +329,6 @@ describe('Orchestrator', () => {
       expect(payload.refreshToken).toBe('[REDACTED]');
       expect(payload.userId).toBe('u1');
 
-      // The original event object must NOT be mutated by the redaction.
       expect(event.accessToken).toBe('super-secret-access');
       expect(event.refreshToken).toBe('super-secret-refresh');
 
@@ -370,7 +367,6 @@ describe('Orchestrator', () => {
       expect(payload.confirmPassword).toBe('[REDACTED]');
       expect(payload.userId).toBe('u1');
 
-      // Original event must not be mutated.
       expect(event.newPassword).toBe('new-secret');
       expect(event.confirmPassword).toBe('new-secret');
 
@@ -420,7 +416,6 @@ describe('Orchestrator', () => {
         throw new Error('listener blew up');
       });
 
-      // Should not throw, and must not reach raw console.error in a non-DEV build.
       expect(() => prodOrchestrator.emit('BOOM', { type: 'BOOM' })).not.toThrow();
       expect(consoleErrorSpy).not.toHaveBeenCalled();
 

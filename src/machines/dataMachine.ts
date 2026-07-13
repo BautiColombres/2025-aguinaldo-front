@@ -533,9 +533,6 @@ export const dataMachine = createMachine({
         ],
         onError: {
           target: "idle",
-          // FBUG-M6 — consume the shared classifier so timeout/abort, 401 and
-          // network rejections are surfaced uniformly with a localized message,
-          // instead of only handling 401 and leaking raw text for the rest.
           actions: [
             assign({
               errors: ({ context, event }) => ({

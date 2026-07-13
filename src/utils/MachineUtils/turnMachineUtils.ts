@@ -141,9 +141,6 @@ export const createModifyTurnRequest = async ({ accessToken, turnId, newSchedule
  */
 export const loadTurnDetails = async ({ turnId, accessToken }: { turnId: string; accessToken: string }): Promise<TurnResponse | null> => {
   try {
-    // Route through the centralized config/api helpers. getAuthenticatedFetchOptions
-    // sets credentials:'include', so the refresh flow is handled centrally (post
-    // FSEC-H1) — no hand-rolled fetch config or manual refresh-token retry here.
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_MY_TURNS);
     const response = await fetch(url, {
       method: 'GET',

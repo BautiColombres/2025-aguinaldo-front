@@ -39,12 +39,8 @@ const PatientDetails: React.FC = () => {
   const MAX_TAGS = 10;
   const frequentTags = [...(medicalHistoryContext.frequentTags || [])].sort((a, b) => b.count - a.count);
 
-  // Tags currently being edited/added for the open note. Kept as transient input
-  // state and forwarded to the machine on save; the machine owns the persisted set.
   const [editingTags, setEditingTags] = React.useState<string[]>([]);
 
-  // Seed the tag input from the existing note's tags when a turn's note is opened,
-  // so editing content never silently drops previously-saved tags.
   React.useEffect(() => {
     const selectedTurnId = medicalHistoryContext.selectedHistory?.turnId;
     if (selectedTurnId) {
@@ -53,7 +49,6 @@ const PatientDetails: React.FC = () => {
     } else {
       setEditingTags([]);
     }
-    // Only re-seed when the selected note changes, not on every keystroke.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [medicalHistoryContext.selectedHistory?.turnId]);
 
@@ -61,8 +56,6 @@ const PatientDetails: React.FC = () => {
     const trimmedFiltered = newValue
       .map(tag => tag.trim())
       .filter(tag => tag.length > 0);
-    // Dedupe before capping: freeSolo lets the same value be entered twice,
-    // which would otherwise produce duplicate chips and a duplicated payload.
     const normalized = Array.from(new Set(trimmedFiltered)).slice(0, MAX_TAGS);
     setEditingTags(normalized);
   };
@@ -113,9 +106,6 @@ const PatientDetails: React.FC = () => {
     medicalHistorySend({ type: "CLEAR_SELECTION" });
   };
 
-  // "Control en X meses" — per-turn selected interval (defaults to 3). The
-  // reminder is anchored to the note's historyId; patient/doctor/scheduledFor
-  // are derived server-side (body carries months only).
   const [followUpMonths, setFollowUpMonths] = React.useState<Record<string, FollowUpMonths>>({});
 
   const handleCreateFollowUp = (historyId: string, turnId: string) => {

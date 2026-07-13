@@ -18,14 +18,6 @@ export interface LogoutResult {
   success: boolean;
 }
 
-/**
- * FSEC-H1 Stage 2 — reload bootstrap.
- * The access token is no longer persisted, so on app start we re-mint it by
- * calling the cookie-based refresh endpoint (AuthService.refreshToken() sends
- * the httpOnly refresh cookie via credentials: 'include'). Success → a fresh
- * access token in the returned SignInResponse; a 401 / missing cookie → throw,
- * which we translate into a logged-out result. Nothing is read from localStorage.
- */
 export const checkStoredAuth = async (): Promise<CheckAuthResult> => {
   try {
     const authData = await AuthService.refreshToken();
@@ -86,9 +78,6 @@ export const submitAuthentication = async ({ context }: AuthSubmitParams) => {
 
 /**
  * Handle user logout
- * FSEC-H1 Stage 2 — signOut() sends no token; the httpOnly refresh cookie travels
- * via credentials: 'include' and the backend revokes + clears it. We still clear
- * any legacy local keys defensively.
  */
 export const logoutUser = async (): Promise<boolean> => {
   try {

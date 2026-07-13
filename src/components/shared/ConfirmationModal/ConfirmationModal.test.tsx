@@ -96,7 +96,6 @@ describe('ConfirmationModal (FBUG-M2 / FBUG-M4)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
 
-    // Still pending -> modal must not be told to close yet.
     expect(uiSend).not.toHaveBeenCalledWith({ type: 'CLOSE_CONFIRMATION_DIALOG' });
 
     resolveApprove();

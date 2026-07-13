@@ -192,9 +192,6 @@ export const medicalHistoryMachine = createMachine({
           accessToken: context.accessToken!,
           doctorId: context.doctorId!,
         }),
-        // On success, if a patient is loaded in context, route through the folded
-        // loader (reloadingAfterMutation) so the history list, turns AND the
-        // frequent-tags cloud all refresh from one source. Otherwise go idle.
         onDone: [
           {
             target: 'reloadingAfterMutation',
@@ -330,10 +327,6 @@ export const medicalHistoryMachine = createMachine({
         },
       },
     },
-    // After any successful add/update/delete, re-run the folded loader for the
-    // currently-selected patient/doctor so histories, turns and the frequent-tags
-    // cloud all stay consistent from a single source (no extra public event or
-    // render-phase dispatch, so StrictMode double-fire is avoided).
     reloadingAfterMutation: {
       entry: assign({ isLoading: () => true }),
       exit: assign({ isLoading: () => false }),
@@ -439,8 +432,6 @@ export const medicalHistoryMachine = createMachine({
         let frequentTags: TagFrequency[] = [];
         if (input.doctorId) {
           medicalHistories = await MedicalHistoryService.getPatientMedicalHistoryByDoctor(input.accessToken, input.doctorId, input.patientId);
-          // Fold the frequent-tags read into the same load so no extra event/render-phase send is needed.
-          // A failing tags fetch must not break the history load.
           try {
             frequentTags = await MedicalHistoryService.getPatientFrequentTags(input.accessToken, input.doctorId, input.patientId);
           } catch (tagsError) {
@@ -481,8 +472,6 @@ export const medicalHistoryMachine = createMachine({
     updateMedicalHistoryEntry: fromPromise(async ({ input }: { input: { historyId: string; content: string; tags?: string[]; accessToken: string; doctorId: string } }) => {
       const request: UpdateMedicalHistoryContentRequest = {
         content: input.content,
-        // Always send tags on update: emptying a note's tags must persist the
-        // clear, otherwise the backend keeps the stale set (silent failure).
         tags: input.tags ?? [],
       };
       return await MedicalHistoryService.updateMedicalHistory(input.accessToken, input.doctorId, input.historyId, request);

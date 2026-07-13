@@ -35,9 +35,6 @@ const DoctorMetrics: React.FC = () => {
   const metrics = doctorContext?.metrics;
   const metricsError = doctorContext?.metricsError;
 
-  // Display average score with proper formatting.
-  // FBUG-M1 — a real score of 0 is a valid value; use a null-check (not a falsy
-  // check) so 0 renders as "0.00" instead of the "N/A" placeholder.
   const displayScore = metrics?.score != null ? metrics.score.toFixed(2) : 'N/A';
 
   const completionRate = React.useMemo(() => {

@@ -70,19 +70,16 @@ describe('FollowUpPanel (F3-F3)', () => {
 
     expect(screen.getByText('John Doe')).toBeInTheDocument();
     expect(screen.getByText('Jane Roe')).toBeInTheDocument();
-    // recommended control date (scheduledFor) shown, formatted DD/MM/YYYY
     expect(screen.getByText(/10\/08\/2024/)).toBeInTheDocument();
     expect(screen.getByText(/15\/09\/2024/)).toBeInTheDocument();
   });
 
   it('does NOT render any overdue chip, severity indicator or "atrasado" text (OQ-4)', () => {
     const { container } = setup([
-      due({ patientId: 'p1', scheduledFor: '2020-01-01' }), // very old on purpose
+      due({ patientId: 'p1', scheduledFor: '2020-01-01' }),
     ]);
 
-    // No MUI Chip anywhere in the panel
     expect(container.querySelector('.MuiChip-root')).toBeNull();
-    // No overdue / severity wording
     expect(screen.queryByText(/atrasad/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/vencid/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/hace \d+ mes/i)).not.toBeInTheDocument();

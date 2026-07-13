@@ -20,7 +20,6 @@ interface FollowUpMachineContext {
   patientReminders: FollowUpReminder[];
   isLoading: boolean;
   error: string | null;
-  // transient inputs for the active invocation
   accessToken: string | null;
   doctorId: string | null;
   patientId: string | null;

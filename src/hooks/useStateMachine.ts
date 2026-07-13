@@ -39,10 +39,6 @@ export function useStateMachine(machineId: string): UseStateMachineReturn {
       return;
     }
 
-    // FBUG-L1 — set the initial snapshot exactly once, then let a single
-    // subscription drive subsequent updates. Previously the snapshot was set up
-    // to 3x on mount (updateSnapshot + actor.getSnapshot + the subscription's
-    // initial emit), causing redundant renders.
     updateSnapshot();
 
     const subscription = machine.actor.subscribe((state: any) => {

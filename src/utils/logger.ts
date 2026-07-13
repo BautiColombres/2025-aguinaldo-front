@@ -1,10 +1,3 @@
-// FSEC-M2 — Dev-only logger.
-// In production (import.meta.env.DEV === false) every method is a no-op, so
-// backend error text / PII never reaches the browser console. `import.meta.env.DEV`
-// is read at call time (not module load) so behaviour tracks the current env.
-// Prefer these over raw console.* in the service layer; keep user-facing messages
-// generic and route diagnostics here.
-
 type LogArgs = unknown[];
 
 const isDev = (): boolean => Boolean(import.meta.env.DEV);

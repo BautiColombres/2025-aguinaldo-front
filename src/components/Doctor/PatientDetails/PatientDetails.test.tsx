@@ -132,7 +132,6 @@ describe('PatientDetails — tags (F1-F4)', () => {
 
   it('adds a chip when typing a tag and pressing Enter', async () => {
     const user = userEvent.setup();
-    // Editing a turn with no existing history -> add flow
     setup({
       selectedHistory: { turnId: 'turn-1', content: '' } as MedicalHistory,
       editingContent: 'Consulta de control',
@@ -175,7 +174,6 @@ describe('PatientDetails — tags (F1-F4)', () => {
       editingContent: 'Nota editada',
     });
 
-    // The existing tag is pre-populated in the input
     expect(screen.getByText('hipertensión')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Guardar/i }));
@@ -198,10 +196,8 @@ describe('PatientDetails — tags (F1-F4)', () => {
       editingContent: 'Nota editada',
     });
 
-    // The existing tag is pre-populated
     expect(screen.getByText('hipertensión')).toBeInTheDocument();
 
-    // Remove the only chip via its delete (Cancel) icon
     const deleteIcon = document.querySelector('[data-testid="CancelIcon"]') as Element;
     await user.click(deleteIcon);
 
@@ -228,11 +224,8 @@ describe('PatientDetails — tags (F1-F4)', () => {
 
     const input = screen.getByRole('combobox');
     await user.type(input, 'diabetes{enter}');
-    // MUI treats ' diabetes ' as a distinct freeSolo value; only our handler
-    // trims + dedupes it, so this collapses to a single chip after the fix.
     await user.type(input, ' diabetes {enter}');
 
-    // Only one chip should remain
     expect(screen.getAllByText('diabetes')).toHaveLength(1);
 
     fireEvent.click(screen.getByRole('button', { name: /Guardar/i }));

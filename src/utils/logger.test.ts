@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { logger } from './logger';
 
-// FSEC-M2 — The dev-only logger must no-op in production so backend error text /
-// PII never reaches the browser console. It reads import.meta.env.DEV at call
-// time, so we stub the env per-test (mirrors the vi.stubEnv pattern in
-// config/api.test.ts).
 
 describe('logger (FSEC-M2)', () => {
   afterEach(() => {
