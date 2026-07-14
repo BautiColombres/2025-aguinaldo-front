@@ -22,9 +22,6 @@ describe('authMachineUtils', () => {
     global.fetch = vi.fn()
   })
 
-  // FSEC-H1 Stage 2 — bootstrap no longer reads localStorage. The access token
-  // is gone after reload, so checkStoredAuth re-mints it via the cookie-based
-  // refresh-token endpoint (AuthService.refreshToken(), credentials: 'include').
   describe('checkStoredAuth', () => {
     it('should return authenticated with the fresh auth data when refresh succeeds', async () => {
       const refreshed = {
@@ -198,8 +195,6 @@ describe('authMachineUtils', () => {
     })
   })
 
-  // FSEC-H1 Stage 2 — logout calls the cookie-based signOut() with no argument;
-  // the backend clears the httpOnly cookie. Local legacy keys are still cleared.
   describe('logoutUser', () => {
     it('should call signOut() with no argument and clear local data', async () => {
       ;(AuthService.signOut as Mock).mockResolvedValue(undefined)

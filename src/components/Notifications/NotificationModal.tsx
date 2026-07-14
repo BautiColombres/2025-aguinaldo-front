@@ -93,8 +93,6 @@ const NotificationModal: React.FC<NotificationModalProps> = ({ open, onClose }) 
     }
   };
 
-  // FBUG-L3 — derive severity from the notification's `type` enum, not by matching
-  // Spanish words in the free-text message (which breaks if the wording changes).
   const WARNING_TYPES: NotificationResponse['type'][] = ['TURN_CANCELLED', 'MODIFY_REQUEST_REJECTED'];
 
   const getSeverityColor = (type: NotificationResponse['type']): 'warning' | 'success' =>

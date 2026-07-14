@@ -1,10 +1,11 @@
 import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
 import { logger } from '../utils/logger';
-import type { 
-  MedicalHistory, 
-  CreateMedicalHistoryRequest, 
+import type {
+  MedicalHistory,
+  CreateMedicalHistoryRequest,
   UpdateMedicalHistoryContentRequest,
-  ApiErrorResponse 
+  TagFrequency,
+  ApiErrorResponse
 } from '../models/MedicalHistory';
 
 export class MedicalHistoryService {
@@ -207,6 +208,43 @@ export class MedicalHistoryService {
       return await response.json();
     } catch (error) {
       logger.error('Failed to get patient medical history by doctor:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get the frequent consultation tags for a patient, scoped to the requesting
+   * doctor's own entries, ordered by count descending.
+   */
+  static async getPatientFrequentTags(
+    accessToken: string,
+    doctorId: string,
+    patientId: string
+  ): Promise<TagFrequency[]> {
+    const url = buildApiUrl(
+      API_CONFIG.ENDPOINTS.GET_PATIENT_TAGS
+        .replace('{doctorId}', doctorId)
+        .replace('{patientId}', patientId)
+    );
+
+    try {
+      const response = await fetch(url, {
+        ...getAuthenticatedFetchOptions(accessToken),
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.message ||
+          errorData?.error ||
+          `Failed to get patient frequent tags! Status: ${response.status}`
+        );
+      }
+
+      return await response.json();
+    } catch (error) {
+      logger.error('Failed to get patient frequent tags:', error);
       throw error;
     }
   }

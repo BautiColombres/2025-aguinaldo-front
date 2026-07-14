@@ -1,0 +1,71 @@
+@import "../../shared/SharedStyles.css";
+
+.followuppanel-container {
+  min-height: 100vh;
+  padding-bottom: 2rem;
+}
+
+.followuppanel-content {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.followuppanel-list-container {
+  margin-top: 1rem;
+}
+
+.followuppanel-patient-card {
+  border-radius: 12px;
+  margin-bottom: 0.5rem;
+  border: 1px solid rgba(34, 87, 122, 0.12);
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.followuppanel-patient-card:hover {
+  background-color: rgba(56, 163, 165, 0.06);
+  box-shadow: 0 2px 8px rgba(13, 34, 48, 0.08);
+}
+
+.followuppanel-patient-avatar {
+  background-color: #22577a;
+  color: #ffffff;
+}
+
+.followuppanel-patient-name {
+  font-weight: 600;
+  color: #0d2230;
+}
+
+.followuppanel-control-date {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #286a85;
+}
+
+.followuppanel-last-visit {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.15rem;
+  color: #5c7481;
+  font-size: 0.85rem;
+}
+
+.followuppanel-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 3rem 1rem;
+  gap: 0.5rem;
+}
+
+.followuppanel-empty-icon {
+  background-color: rgba(34, 87, 122, 0.1);
+  color: #22577a;
+  width: 64px;
+  height: 64px;
+}

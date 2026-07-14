@@ -1108,8 +1108,6 @@ describe('dataMachine', () => {
       expect(actor.getSnapshot().context.errors.doctors).toBe('Error al cargar doctores');
     });
 
-    // FBUG-M6 — an AbortSignal.timeout rejection must be classified and surfaced
-    // as the shared localized timeout message, not left as raw/undefined text.
     it('maps an AbortSignal.timeout rejection to the shared timeout message', async () => {
       actor = createActor(dataMachine, {});
       actor.start();

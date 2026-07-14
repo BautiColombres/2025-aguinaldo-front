@@ -6,9 +6,6 @@ function SnackbarAlert() {
   const { uiState, uiSend } = useMachines();
   const { snackbar } = uiState.context;
 
-  // FBUG-L4 — MUI owns the auto-hide timer via `autoHideDuration`; it resets on each
-  // new snackbar, so timers can no longer stack/leak. Ignore clickaway so the
-  // snackbar only closes on timeout or an explicit user action.
   const handleClose = (_event?: React.SyntheticEvent | Event, reason?: string) => {
     if (reason === "clickaway") {
       return;

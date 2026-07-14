@@ -19,6 +19,7 @@ import { dayjsArgentina, nowArgentina } from '#/utils/dateTimeUtils';
 import "./PatientDashboard.css";
 import LoadingThreeDotsJumping from "../shared/PageLoadingScreen/LoadingThreeDots";
 import { useDataMachine } from "#/providers/DataProvider";
+import PatientFollowUpReminders from "./PatientFollowUpReminders";
 
 const PatientDashboard: React.FC = () => {
   const { uiSend, turnState, badgeState } = useMachines();
@@ -108,6 +109,10 @@ const PatientDashboard: React.FC = () => {
               buttonText="Nuevo Turno"
               onClick={() => uiSend({ type: "NAVIGATE", to: "/patient/reservation-turns" })}
             />
+          </Box>
+
+          <Box sx={{ mt: 3 }}>
+            <PatientFollowUpReminders />
           </Box>
 
           <BadgeShowcase

@@ -130,9 +130,6 @@ export class AuthService {
     }
   }
 
-  // FSEC-H1 Stage 2 — the refresh token is an httpOnly cookie (Path=/api/auth).
-  // signOut sends no token; credentials: 'include' carries the cookie, and the
-  // backend revokes + clears it. No Refresh-Token header.
   static async signOut(): Promise<void> {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.SIGNOUT);
 
@@ -157,8 +154,6 @@ export class AuthService {
     }
   }
 
-  // FSEC-H1 Stage 2 — refresh reads the httpOnly cookie (credentials: 'include');
-  // no token argument, no Refresh-Token header. Returns a fresh access token.
   static async refreshToken(): Promise<SignInResponse> {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.REFRESH_TOKEN);
 
@@ -186,15 +181,10 @@ export class AuthService {
     }
   }
 
-  // FSEC-H1 Stage 2 — no token is ever persisted. The access token lives only in
-  // XState context; the refresh token lives only in the httpOnly cookie. Reload
-  // re-bootstraps everything through /api/auth/refresh-token. Kept as a no-op so
-  // the single write choke-point stays intact for callers.
   static saveAuthData(_signInResponse: SignInResponse) {
     // intentionally does nothing (no localStorage/sessionStorage token storage)
   }
 
-  // FSEC-H1 Stage 2 — nothing is persisted, so there is nothing to read back.
   static getStoredAuthData(): SignInResponse | null {
     return null;
   }

@@ -15,6 +15,7 @@ vi.mock('../service/medical-history-service.service', () => ({
   MedicalHistoryService: {
     getPatientMedicalHistory: vi.fn(),
     getPatientMedicalHistoryByDoctor: vi.fn(),
+    getPatientFrequentTags: vi.fn(),
     addMedicalHistory: vi.fn(),
     updateMedicalHistory: vi.fn(),
     deleteMedicalHistory: vi.fn()
@@ -78,11 +79,14 @@ describe('medicalHistoryMachine', () => {
         currentTurnId: null,
         currentTurnInfo: null,
         patientTurns: [],
+        frequentTags: [],
         error: null,
         isLoading: false,
         selectedHistory: null,
         newHistoryContent: '',
+        newHistoryTags: [],
         editingContent: '',
+        editingTags: [],
         accessToken: null,
         doctorId: null
       });
@@ -113,6 +117,51 @@ describe('medicalHistoryMachine', () => {
       expect(actor.getSnapshot().context.isLoading).toBe(false);
       expect(actor.getSnapshot().context.error).toBe(null);
       expect(MedicalHistoryService.getPatientMedicalHistory).toHaveBeenCalledWith('token-123', 'patient-1');
+    });
+
+    it('should populate frequentTags from the folded loader output when a doctorId is provided', async () => {
+      vi.mocked(MedicalHistoryService.getPatientMedicalHistoryByDoctor).mockResolvedValueOnce(mockHistories);
+      vi.mocked(MedicalHistoryService.getPatientFrequentTags).mockResolvedValueOnce([
+        { tag: 'diabetes', count: 4 },
+        { tag: 'control', count: 2 }
+      ]);
+
+      actor.send({
+        type: 'LOAD_PATIENT_MEDICAL_HISTORY',
+        patientId: 'patient-1',
+        accessToken: 'token-123',
+        doctorId: 'doctor-1'
+      });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(MedicalHistoryService.getPatientFrequentTags).toHaveBeenCalledWith('token-123', 'doctor-1', 'patient-1');
+      expect(actor.getSnapshot().context.medicalHistories).toEqual(mockHistories);
+      expect(actor.getSnapshot().context.frequentTags).toEqual([
+        { tag: 'diabetes', count: 4 },
+        { tag: 'control', count: 2 }
+      ]);
+    });
+
+    it('should leave frequentTags empty when the tags fetch fails but still load histories', async () => {
+      vi.mocked(MedicalHistoryService.getPatientMedicalHistoryByDoctor).mockResolvedValueOnce(mockHistories);
+      vi.mocked(MedicalHistoryService.getPatientFrequentTags).mockRejectedValueOnce(new Error('tags boom'));
+
+      actor.send({
+        type: 'LOAD_PATIENT_MEDICAL_HISTORY',
+        patientId: 'patient-1',
+        accessToken: 'token-123',
+        doctorId: 'doctor-1'
+      });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(actor.getSnapshot().context.medicalHistories).toEqual(mockHistories);
+      expect(actor.getSnapshot().context.frequentTags).toEqual([]);
     });
 
     it('should handle loading medical histories failure', async () => {
@@ -182,6 +231,30 @@ describe('medicalHistoryMachine', () => {
       expect(actor.getSnapshot().context.error).toBe('Error al agregar historia médica al turno: Error: Failed to add medical history');
       expect(actor.getSnapshot().context.isLoading).toBe(false);
     });
+
+    it('should pass tags to the add service when provided', async () => {
+      vi.mocked(MedicalHistoryService.addMedicalHistory).mockResolvedValueOnce(mockMedicalHistory);
+
+      actor.send({
+        type: 'ADD_HISTORY_ENTRY_FOR_TURN',
+        turnId: 'turn-1',
+        content: 'New medical history',
+        tags: ['diabetes', 'control'],
+        accessToken: 'token-123',
+        doctorId: 'doctor-1'
+      });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(MedicalHistoryService.addMedicalHistory).toHaveBeenCalledWith(
+        'token-123',
+        'doctor-1',
+        { turnId: 'turn-1', content: 'New medical history', tags: ['diabetes', 'control'] }
+      );
+      expect(actor.getSnapshot().context.newHistoryTags).toEqual([]);
+    });
   });
 
   describe('UPDATE_HISTORY_ENTRY', () => {
@@ -224,7 +297,79 @@ describe('medicalHistoryMachine', () => {
         'token-123',
         'doctor-1',
         'history-1',
-        { content: 'Updated content' }
+        { content: 'Updated content', tags: [] }
+      );
+    });
+
+    it('should always send tags (as an empty array) on update so clearing tags is persisted', async () => {
+      const updatedHistory = { ...mockMedicalHistory, content: 'Updated content', tags: [] };
+      vi.mocked(MedicalHistoryService.updateMedicalHistory).mockResolvedValueOnce(updatedHistory);
+      vi.mocked(MedicalHistoryService.getPatientMedicalHistory).mockResolvedValueOnce([mockMedicalHistory]);
+
+      actor.send({
+        type: 'LOAD_PATIENT_MEDICAL_HISTORY',
+        patientId: 'patient-1',
+        accessToken: 'token-123'
+      });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      actor.send({
+        type: 'UPDATE_HISTORY_ENTRY',
+        historyId: 'history-1',
+        content: 'Updated content',
+        tags: [],
+        accessToken: 'token-123',
+        doctorId: 'doctor-1'
+      });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(MedicalHistoryService.updateMedicalHistory).toHaveBeenCalledWith(
+        'token-123',
+        'doctor-1',
+        'history-1',
+        { content: 'Updated content', tags: [] }
+      );
+    });
+
+    it('should pass tags to the update service so editing does not drop them', async () => {
+      const updatedHistory = { ...mockMedicalHistory, content: 'Updated content', tags: ['diabetes'] };
+      vi.mocked(MedicalHistoryService.updateMedicalHistory).mockResolvedValueOnce(updatedHistory);
+      vi.mocked(MedicalHistoryService.getPatientMedicalHistory).mockResolvedValueOnce([mockMedicalHistory]);
+
+      actor.send({
+        type: 'LOAD_PATIENT_MEDICAL_HISTORY',
+        patientId: 'patient-1',
+        accessToken: 'token-123'
+      });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      actor.send({
+        type: 'UPDATE_HISTORY_ENTRY',
+        historyId: 'history-1',
+        content: 'Updated content',
+        tags: ['diabetes'],
+        accessToken: 'token-123',
+        doctorId: 'doctor-1'
+      });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(MedicalHistoryService.updateMedicalHistory).toHaveBeenCalledWith(
+        'token-123',
+        'doctor-1',
+        'history-1',
+        { content: 'Updated content', tags: ['diabetes'] }
       );
     });
 
@@ -335,6 +480,124 @@ describe('medicalHistoryMachine', () => {
 
       expect(actor.getSnapshot().context.error).toBe('Error al eliminar historia médica: Error: Failed to delete medical history');
       expect(actor.getSnapshot().context.isLoading).toBe(false);
+    });
+  });
+
+  describe('frequentTags refresh after mutations', () => {
+    async function loadPatientWithTags(initialTags: { tag: string; count: number }[]) {
+      vi.mocked(MedicalHistoryService.getPatientMedicalHistoryByDoctor).mockResolvedValueOnce([mockMedicalHistory]);
+      vi.mocked(MedicalHistoryService.getPatientFrequentTags).mockResolvedValueOnce(initialTags);
+
+      actor.send({
+        type: 'LOAD_PATIENT_MEDICAL_HISTORY',
+        patientId: 'patient-1',
+        accessToken: 'token-123',
+        doctorId: 'doctor-1'
+      });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+    }
+
+    it('re-runs the loader and refreshes frequentTags after a successful add-with-tags', async () => {
+      await loadPatientWithTags([{ tag: 'diabetes', count: 1 }]);
+      expect(actor.getSnapshot().context.frequentTags).toEqual([{ tag: 'diabetes', count: 1 }]);
+
+      vi.mocked(MedicalHistoryService.addMedicalHistory).mockResolvedValueOnce(mockMedicalHistory);
+      vi.mocked(MedicalHistoryService.getPatientMedicalHistoryByDoctor).mockResolvedValueOnce([mockMedicalHistory]);
+      vi.mocked(MedicalHistoryService.getPatientFrequentTags).mockResolvedValueOnce([
+        { tag: 'diabetes', count: 1 },
+        { tag: 'control anual', count: 1 }
+      ]);
+
+      actor.send({
+        type: 'ADD_HISTORY_ENTRY_FOR_TURN',
+        turnId: 'turn-1',
+        content: 'Annual control note',
+        tags: ['control anual'],
+        accessToken: 'token-123',
+        doctorId: 'doctor-1'
+      });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(MedicalHistoryService.getPatientFrequentTags).toHaveBeenCalledTimes(2);
+      expect(MedicalHistoryService.getPatientFrequentTags).toHaveBeenLastCalledWith('token-123', 'doctor-1', 'patient-1');
+      expect(actor.getSnapshot().context.frequentTags).toEqual([
+        { tag: 'diabetes', count: 1 },
+        { tag: 'control anual', count: 1 }
+      ]);
+    });
+
+    it('refreshes frequentTags after a successful update, including clearing tags to empty', async () => {
+      await loadPatientWithTags([{ tag: 'diabetes', count: 2 }]);
+
+      const updated = { ...mockMedicalHistory, content: 'Updated content', tags: [] };
+      vi.mocked(MedicalHistoryService.updateMedicalHistory).mockResolvedValueOnce(updated);
+      vi.mocked(MedicalHistoryService.getPatientMedicalHistoryByDoctor).mockResolvedValueOnce([updated]);
+      vi.mocked(MedicalHistoryService.getPatientFrequentTags).mockResolvedValueOnce([{ tag: 'diabetes', count: 1 }]);
+
+      actor.send({
+        type: 'UPDATE_HISTORY_ENTRY',
+        historyId: 'history-1',
+        content: 'Updated content',
+        tags: [],
+        accessToken: 'token-123',
+        doctorId: 'doctor-1'
+      });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(MedicalHistoryService.getPatientFrequentTags).toHaveBeenCalledTimes(2);
+      expect(MedicalHistoryService.getPatientFrequentTags).toHaveBeenLastCalledWith('token-123', 'doctor-1', 'patient-1');
+      expect(actor.getSnapshot().context.frequentTags).toEqual([{ tag: 'diabetes', count: 1 }]);
+    });
+
+    it('refreshes frequentTags after a successful delete', async () => {
+      await loadPatientWithTags([{ tag: 'diabetes', count: 2 }, { tag: 'control', count: 1 }]);
+
+      vi.mocked(MedicalHistoryService.deleteMedicalHistory).mockResolvedValueOnce(undefined);
+      vi.mocked(MedicalHistoryService.getPatientMedicalHistoryByDoctor).mockResolvedValueOnce([]);
+      vi.mocked(MedicalHistoryService.getPatientFrequentTags).mockResolvedValueOnce([{ tag: 'control', count: 1 }]);
+
+      actor.send({
+        type: 'DELETE_HISTORY_ENTRY',
+        historyId: 'history-1',
+        accessToken: 'token-123',
+        doctorId: 'doctor-1'
+      });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(MedicalHistoryService.getPatientFrequentTags).toHaveBeenCalledTimes(2);
+      expect(MedicalHistoryService.getPatientFrequentTags).toHaveBeenLastCalledWith('token-123', 'doctor-1', 'patient-1');
+      expect(actor.getSnapshot().context.frequentTags).toEqual([{ tag: 'control', count: 1 }]);
+    });
+
+    it('does not attempt a reload when there is no selected patient in context', async () => {
+      vi.mocked(MedicalHistoryService.addMedicalHistory).mockResolvedValueOnce(mockMedicalHistory);
+
+      actor.send({
+        type: 'ADD_HISTORY_ENTRY_FOR_TURN',
+        turnId: 'turn-1',
+        content: 'Note without a loaded patient',
+        accessToken: 'token-123',
+        doctorId: 'doctor-1'
+      });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(MedicalHistoryService.getPatientFrequentTags).not.toHaveBeenCalled();
+      expect(actor.getSnapshot().context.medicalHistories).toContain(mockMedicalHistory);
     });
   });
 

@@ -12,6 +12,7 @@ import ViewTurns from './components/Patient/ViewTurns'
 import ModifyTurn from './components/Patient/ModifyTurn'
 import EnableHours from './components/Doctor/EnableHours/EnableHours'
 import ViewPatients from './components/Doctor/ViewPatients/ViewPatients'
+import FollowUpPanel from './components/Doctor/FollowUpPanel/FollowUpPanel'
 import DoctorViewTurns from './components/Doctor/DoctorViewTurns/DoctorViewTurns'
 import PatientDetails from './components/Doctor/PatientDetails/PatientDetails'
 import SnackbarAlert from './components/shared/SnackbarAlert/SnackbarAlert'
@@ -34,11 +35,6 @@ function AppContent() {
   const navigate = useNavigate();
   const authContext = authState.context;
 
-  // FSEC-M1 — `userRole` / `userStatus` come from the client-held auth response
-  // and are used ONLY for cosmetic UX (show/hide) + client-side routing below.
-  // They gate NO privileged action: every route just renders a component whose
-  // data mutations go through services that send the Bearer token, and the
-  // backend is the source of truth for authorization (authz landed P0–P2).
   const userRole = authContext.authResponse?.role || '';
   const userStatus = authContext.authResponse?.status || '';
 
@@ -67,6 +63,7 @@ function AppContent() {
         <>
           <Route path="/doctor/enable-hours" element={<EnableHours />} />
           <Route path="/doctor/view-patients" element={<ViewPatients />} />
+          <Route path="/doctor/follow-up-panel" element={<FollowUpPanel />} />
           <Route path="/doctor/view-turns" element={<DoctorViewTurns />} />
           <Route path="/doctor/metrics" element={<DoctorMetrics />} />
           <Route path="/doctor/badges" element={<DoctorBadges />} />
@@ -107,10 +104,7 @@ function AppContent() {
 
         <Routes>
           <Route path="*" element={<HomeScreen />} />
-          
-          {/* FSEC-M1 — cosmetic route mounting by client-held role. Bypassing this
-              (e.g. crafting a role) only renders UI; the backend still rejects any
-              unauthorized request, so this is not a security boundary. */}
+
           {userRole === 'ADMIN' && renderAdminRoutes()}
           {userRole === 'DOCTOR' && renderDoctorRoutes()}
           {userRole === 'PATIENT' && renderPatientRoutes()}

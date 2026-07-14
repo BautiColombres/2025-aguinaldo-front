@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
-  Box, 
-  Typography, 
+  Box,
+  Typography,
   Container,
   Avatar,
   Badge
@@ -12,6 +12,7 @@ import PeopleAltIcon from "@mui/icons-material/PeopleAlt";
 import PersonIcon from "@mui/icons-material/Person";
 import NotificationsIcon from "@mui/icons-material/Notifications";
 import BarChartIcon from "@mui/icons-material/BarChart";
+import EventRepeatIcon from "@mui/icons-material/EventRepeat";
 import LoadingThreeDotsJumping from "../../shared/PageLoadingScreen/LoadingThreeDots";
 import BadgeShowcase from "../../shared/Badges/BadgeShowcase";
 import type { TurnModifyRequest } from "#/models/TurnModifyRequest";
@@ -29,13 +30,25 @@ import { useDataMachine } from "#/providers/DataProvider";
 const DoctorDashboard: React.FC = () => {
   const { dataState } = useDataMachine();
   const dataContext = dataState.context;
-  const { uiSend, turnState, doctorState, badgeState } = useMachines();
+  const { uiSend, turnState, doctorState, badgeState, followUpState, followUpSend } = useMachines();
 
   const turnContext = turnState?.context;
   const doctorContext = doctorState?.context;
   const badgeContext = badgeState?.context;
+  const followUpContext = followUpState?.context;
   const authContext = useAuthMachine().authState?.context;
   const user = authContext.authResponse as SignInResponse;
+
+  const dueForFollowUpCount: number = (followUpContext?.dueForFollowUp || []).length;
+  const doctorAccessToken = doctorContext?.accessToken;
+  const doctorId = doctorContext?.doctorId;
+
+  useEffect(() => {
+    if (doctorAccessToken && doctorId) {
+      followUpSend({ type: "LOAD_DUE_FOR_FOLLOWUP", doctorId, accessToken: doctorAccessToken });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctorAccessToken, doctorId]);
 
   const availability = doctorContext?.availability || [];
   const hasConfiguredDays = availability.some((day: any) => day.enabled && day.ranges?.length > 0);
@@ -154,6 +167,21 @@ const DoctorDashboard: React.FC = () => {
               description="Ver estadísticas detalladas de tu actividad médica"
               buttonText="Ver Métricas"
               onClick={() => uiSend({ type: "NAVIGATE", to: "/doctor/metrics" })}
+            />
+
+            <DashboardCard
+              type="doctor"
+              variant="secondary"
+              icon={<EventRepeatIcon className="doctor-action-icon" />}
+              title="Seguimiento pendiente"
+              description={
+                dueForFollowUpCount > 0
+                  ? `${dueForFollowUpCount} paciente${dueForFollowUpCount !== 1 ? 's' : ''} ${dueForFollowUpCount !== 1 ? 'deben' : 'debe'} volver y no ${dueForFollowUpCount !== 1 ? 'tienen' : 'tiene'} un turno próximo`
+                  : "No hay pacientes con seguimiento pendiente"
+              }
+              buttonText="Ver seguimientos"
+              badge={dueForFollowUpCount}
+              onClick={() => uiSend({ type: "NAVIGATE", to: "/doctor/follow-up-panel" })}
             />
           </Box>
 

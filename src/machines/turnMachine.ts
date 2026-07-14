@@ -224,9 +224,6 @@ export const turnMachine = createMachine({
     isCancellingTurn: false,
     cancellingTurnId: null,
 
-    // FBUG-L5 — removed dead context flags `isModifyingTurn` / `isLoadingTurnDetails`:
-    // they were assigned here but never declared in TurnMachineContext and were never
-    // set to true anywhere, so the UI branches reading them were permanently dead.
     isLoadingAvailableSlots: false,
 
     error: null,
@@ -494,10 +491,6 @@ export const turnMachine = createMachine({
         },
         submittingModifyRequest: {
           invoke: {
-            // FBUG-H2: validation lives INSIDE the actor body, not in `input`.
-            // A throw in `input` propagates synchronously at actor spawn and can
-            // fault the parent. Here an invalid selection rejects the promise and
-            // is handled by onError, keeping the machine alive.
             src: fromPromise(async ({ input }: { input: { turnId: string | null; selectedDate: Dayjs | null; selectedTime: string | null; accessToken: string | null } }) => {
               const { turnId, selectedDate, selectedTime, accessToken } = input;
 

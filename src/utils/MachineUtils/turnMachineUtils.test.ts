@@ -33,7 +33,6 @@ vi.mock('../../service/auth-service.service', () => ({
   }
 }))
 
-// Spy on the centralized api helpers while keeping buildApiUrl/API_CONFIG real.
 vi.mock('../../../config/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../config/api')>()
   return {
@@ -136,8 +135,6 @@ describe('turnMachineUtils', () => {
   })
 
   describe('loadTurnDetails', () => {
-    // Routes HTTP through the centralized config/api helpers (buildApiUrl +
-    // getAuthenticatedFetchOptions), not a hand-rolled fetch config.
     it('should use buildApiUrl and getAuthenticatedFetchOptions and return turn details', async () => {
       const params = {
         turnId: 'turn456',
@@ -157,9 +154,7 @@ describe('turnMachineUtils', () => {
       const result = await loadTurnDetails(params)
 
       expect(result).toEqual({ id: 'turn456', status: 'PENDING' })
-      // Uses the centralized authenticated fetch options helper.
       expect(getAuthenticatedFetchOptions).toHaveBeenCalledWith('token123')
-      // buildApiUrl produced the full my-turns URL and credentials are included.
       expect(global.fetch).toHaveBeenCalledWith(
         'http://localhost:8080/api/turns/my-turns',
         expect.objectContaining({
@@ -186,8 +181,6 @@ describe('turnMachineUtils', () => {
       await expect(loadTurnDetails(params)).rejects.toThrow('Turn with ID turn999 not found in your turns')
     })
 
-    // Post-FSEC-H1 the refresh flow is centralized; loadTurnDetails must NOT
-    // hand-roll a manual refresh-token retry on 401.
     it('should NOT hand-roll a manual refresh-token retry on 401', async () => {
       const params = {
         turnId: 'turn456',
@@ -205,7 +198,6 @@ describe('turnMachineUtils', () => {
       await expect(loadTurnDetails(params)).rejects.toThrow()
 
       expect(AuthService.refreshToken).not.toHaveBeenCalled()
-      // A single request — no manual retry loop.
       expect(global.fetch).toHaveBeenCalledTimes(1)
     })
 

@@ -2,7 +2,6 @@ import { render, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import SnackbarAlert from './SnackbarAlert';
 
-// Mock the machines provider so we can drive the snackbar context directly.
 vi.mock('../../../providers/MachineProvider', () => ({
   useMachines: vi.fn(),
 }));

@@ -166,8 +166,6 @@ describe('authMachine', () => {
     });
   });
 
-  // FBUG-L2 — the session-expired snackbar must read its data from the resolved
-  // event (event.output), regardless of the order the onDone actions run in.
   describe('checkingAuth expired session (FBUG-L2)', () => {
     it('opens the session-expired snackbar from the event, independent of action ordering', async () => {
       vi.mocked(checkStoredAuth).mockResolvedValue({
@@ -338,22 +336,15 @@ describe('authMachine', () => {
       expect(actor.getSnapshot().context.hasErrorsOrEmpty).toBe(true);
     });
 
-    // FBUG-C1: guard purity — the validating guard returns a boolean based on the
-    // computed errors and does NOT rely on mutating context to surface them. The
-    // guard must return false (stay/transition to idle) when validation fails.
     it('should return false from the guard (route to idle) when validation fails', () => {
       mockFormValidation.validateField.mockReturnValue('Invalid email format');
       actor.send({ type: 'UPDATE_FORM', key: 'userEmail', value: 'invalid-email' });
 
       actor.send({ type: 'SUBMIT' });
 
-      // The valid-form guard evaluated to false, so we land in idle (not submitting).
       expect(actor.getSnapshot().value).toBe('idle');
     });
 
-    // FBUG-C1: errors must still surface to the UI via the assign path (NOT via a
-    // guard-side mutation, which was the deleted bug). Even after removing the
-    // `context.formErrors = errors` mutation from the guard, formErrors stays populated.
     it('should still populate formErrors via the assign path when validation fails', () => {
       mockFormValidation.validateField.mockReturnValue('Invalid email format');
       actor.send({ type: 'UPDATE_FORM', key: 'userEmail', value: 'invalid-email' });
@@ -367,8 +358,6 @@ describe('authMachine', () => {
 
   describe('submitting state', () => {
     beforeEach(async () => {
-      // Keep the submit in-flight so we can observe the submitting entry state
-      // (a resolved promise would immediately advance to authenticated/idle).
       vi.mocked(submitAuthentication).mockReturnValue(new Promise(() => {}));
 
       actor = createActor(authMachine);
@@ -389,8 +378,6 @@ describe('authMachine', () => {
     });
   });
 
-  // FBUG-M5 — submitting.onError must build a fully typed ApiErrorResponse payload
-  // (message/error), not an untyped partial assign.
   describe('submitting onError (FBUG-M5)', () => {
     it('produces a typed ApiErrorResponse on a general error', async () => {
       vi.mocked(submitAuthentication).mockRejectedValue(new Error('Credenciales inválidas'));
@@ -446,7 +433,6 @@ describe('authMachine', () => {
     });
   });
 
-  // FSEC-H1 Stage 2 — the single-choke-point + no-persistence invariants.
   describe('FSEC-H1 token storage', () => {
     it('login onDone must NOT persist tokens via saveAuthData', async () => {
       vi.mocked(submitAuthentication).mockResolvedValue({

@@ -281,8 +281,6 @@ describe('AuthService', () => {
   });
 
   describe('signOut', () => {
-    // FSEC-H1 Stage 2 — signOut takes no argument; the refresh token travels as
-    // an httpOnly cookie via credentials: 'include'. No Refresh-Token header.
     it('should successfully sign out user with credentials and no Refresh-Token header', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true
@@ -334,8 +332,6 @@ describe('AuthService', () => {
   });
 
   describe('refreshToken', () => {
-    // FSEC-H1 Stage 2 — refreshToken takes no argument; the refresh token travels
-    // as an httpOnly cookie via credentials: 'include'. No Refresh-Token header.
     const mockSignInResponse: SignInResponse = {
       id: '1',
       email: 'john.doe@example.com',
@@ -413,7 +409,6 @@ describe('AuthService', () => {
     it('must NOT write any token to localStorage', () => {
       AuthService.saveAuthData(mockSignInResponse);
 
-      // Floor test: no token payload persisted anywhere.
       expect(localStorageMock.setItem).not.toHaveBeenCalled();
     });
   });

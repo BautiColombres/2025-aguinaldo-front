@@ -120,9 +120,6 @@ export const authMachine = createMachine({
                 isAuthenticated: event.output.isAuthenticated
               })),
               ({ event }) => {
-                // FBUG-L2 — read the expired-session signal straight from the resolved
-                // event (event.output), never from context populated by the preceding
-                // assign. This keeps the snackbar independent of onDone action ordering.
                 // If we had auth data but token validation failed, show message and navigate
                 if (event.output.authData && !event.output.isAuthenticated) {
                   orchestrator.send({ type: "CLEAR_ACCESS_TOKEN" });
@@ -410,9 +407,6 @@ export const authMachine = createMachine({
             actions: assign(({ event }) => {
               const response = event.output;
 
-              // FSEC-H1 Stage 2 — no token persistence. The access token lives in
-              // context (SET_AUTH on the authenticated entry) and the refresh token
-              // stays in the httpOnly cookie set by the backend on signin.
               return {
                 isAuthenticated: true,
                 authResponse: response,
@@ -450,8 +444,6 @@ export const authMachine = createMachine({
         ],
         onError: {
           target: "idle",
-          // FBUG-M5 — build a fully typed ApiErrorResponse payload instead of an
-          // untyped partial assign, so consumers can rely on a consistent shape.
           actions: assign(({ event, context }): Partial<AuthMachineContext> => {
             const error = event.error;
 
@@ -492,10 +484,6 @@ export const authMachine = createMachine({
     refreshingToken: {
       invoke: {
         src: fromPromise(async () => {
-          // FSEC-H1 Stage 2 — cookie-based refresh. The httpOnly refresh cookie
-          // travels automatically (credentials: 'include'); no token is read from
-          // context and nothing is persisted. The new access token flows to the
-          // machines via SET_AUTH in onDone below.
           const response = await AuthService.refreshToken();
           return response;
         }),

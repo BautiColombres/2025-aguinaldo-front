@@ -53,7 +53,6 @@ describe('useStateMachine', () => {
     expect(result.current.state).toEqual(mockSnapshot);
   });
 
-  // FBUG-L1 — mounting must read/set the initial snapshot exactly once, not up to 3x.
   it('reads the initial snapshot only once on mount (FBUG-L1)', () => {
     renderHook(() => useStateMachine(mockMachineId));
 
