@@ -3,6 +3,30 @@ import { StorageService } from './storage-service.service';
 
 // Mock the API config
 vi.mock('../../config/api', () => ({
+  // FBUG-003 — services now issue authenticated requests through the centralized
+  // `authenticatedFetch` interceptor (401 -> refresh -> retry, covered in config/api.test.ts).
+  // Here it is stubbed to a plain fetch so these suites keep asserting the request shape.
+  authenticatedFetch: vi.fn(
+    (
+      url: string,
+      token: string,
+      init: Omit<RequestInit, 'headers'> & {
+        headers?: Record<string, string>;
+        omitJsonContentType?: boolean;
+      } = {},
+    ) => {
+    const { omitJsonContentType, headers, ...rest } = init;
+    return fetch(url, {
+      ...rest,
+      headers: {
+        ...(omitJsonContentType ? {} : { 'Content-Type': 'application/json' }),
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
+      credentials: 'include',
+      signal: AbortSignal.timeout(10000),
+    });
+  }),
   buildApiUrl: vi.fn((endpoint: string) => `http://localhost:8080${endpoint}`),
   getAuthenticatedFetchOptions: vi.fn((token: string) => ({
     headers: {
@@ -123,9 +147,9 @@ describe('StorageService', () => {
         'http://localhost:8080/api/storage/delete-turn-file/turn-1',
         expect.objectContaining({
           method: 'DELETE',
-          headers: {
+          headers: expect.objectContaining({
             'Authorization': 'Bearer test-token'
-          }
+          })
         })
       );
     });
@@ -175,9 +199,9 @@ describe('StorageService', () => {
         'http://localhost:8080/api/storage/delete/bucket-1/file.pdf',
         expect.objectContaining({
           method: 'DELETE',
-          headers: {
+          headers: expect.objectContaining({
             'Authorization': 'Bearer test-token'
-          }
+          })
         })
       );
     });
@@ -213,9 +237,9 @@ describe('StorageService', () => {
         'http://localhost:8080/api/storage/url/bucket-1/file.pdf',
         expect.objectContaining({
           method: 'GET',
-          headers: {
+          headers: expect.objectContaining({
             'Authorization': 'Bearer test-token'
-          }
+          })
         })
       );
 

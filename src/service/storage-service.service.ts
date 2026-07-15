@@ -1,4 +1,4 @@
-import { buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
+import { authenticatedFetch, buildApiUrl } from '../../config/api';
 import { logger } from '../utils/logger';
 
 export interface UploadResponse {
@@ -20,7 +20,6 @@ const FILE_CONFIG = {
   MAX_SIZE: 5 * 1024 * 1024,
   ALLOWED_TYPES: ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'] as const,
   ALLOWED_EXTENSIONS: ['.pdf', '.jpg', '.jpeg', '.png'] as const,
-  TIMEOUT: 10000 
 };
 
 export class StorageService {
@@ -53,16 +52,6 @@ export class StorageService {
     }
   }
 
-  private static createFetchWithTimeout(url: string, options: RequestInit, timeout: number = FILE_CONFIG.TIMEOUT) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-    
-    return fetch(url, {
-      ...options,
-      signal: controller.signal
-    }).finally(() => clearTimeout(timeoutId));
-  }
-
   static async uploadTurnFile(
     accessToken: string,
     turnId: string,
@@ -77,12 +66,11 @@ export class StorageService {
     const url = buildApiUrl('/api/storage/upload-turn-file');
 
     try {
-      const response = await this.createFetchWithTimeout(url, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-        },
+      // omitJsonContentType: multipart uploads must let the browser set the boundary.
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'POST',
         body: formData,
+        omitJsonContentType: true,
       });
 
       if (!response.ok) {
@@ -100,8 +88,7 @@ export class StorageService {
     const url = buildApiUrl(`/api/storage/delete-turn-file/${turnId}`);
 
     try {
-      const response = await this.createFetchWithTimeout(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'DELETE',
       });
 
@@ -118,8 +105,7 @@ export class StorageService {
     const url = buildApiUrl(`/api/storage/delete/${bucketName}/${fileName}`);
 
     try {
-      const response = await this.createFetchWithTimeout(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'DELETE',
       });
 
@@ -136,8 +122,7 @@ export class StorageService {
     const url = buildApiUrl(`/api/storage/url/${bucketName}/${fileName}`);
 
     try {
-      const response = await this.createFetchWithTimeout(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 

@@ -33,19 +33,19 @@ vi.mock('../../service/auth-service.service', () => ({
   }
 }))
 
-vi.mock('../../../config/api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../config/api')>()
-  return {
-    ...actual,
-    getAuthenticatedFetchOptions: vi.fn((accessToken: string) => ({
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`
-      },
-      credentials: 'include'
-    }))
+// FBUG-003 — the real config/api is used so the centralized `authenticatedFetch`
+// interceptor (401 → refresh → retry) is exercised; only the orchestrator broadcast
+// is stubbed.
+const { orchestratorSend } = vi.hoisted(() => ({ orchestratorSend: vi.fn() }))
+
+vi.mock('#/core/Orchestrator', () => ({
+  orchestrator: {
+    send: orchestratorSend,
+    sendToMachine: vi.fn()
   }
-})
+}))
+
+const REFRESH_URL = 'http://localhost:8080/api/auth/refresh-token'
 
 describe('turnMachineUtils', () => {
   beforeEach(() => {
@@ -91,13 +91,17 @@ describe('turnMachineUtils', () => {
 
       await expect(cancelTurn(params)).resolves.not.toThrow()
 
-      expect(global.fetch).toHaveBeenCalledWith('http://localhost:8080/api/turns/turn456/cancel', {
-        method: 'PATCH',
-        headers: {
-          'Authorization': 'Bearer token123',
-          'Content-Type': 'application/json'
-        }
-      })
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/turns/turn456/cancel',
+        expect.objectContaining({
+          method: 'PATCH',
+          credentials: 'include',
+          headers: expect.objectContaining({
+            Authorization: 'Bearer token123',
+            'Content-Type': 'application/json'
+          })
+        })
+      )
     })
 
     it('should throw error when cancel fails', async () => {
@@ -135,7 +139,7 @@ describe('turnMachineUtils', () => {
   })
 
   describe('loadTurnDetails', () => {
-    it('should use buildApiUrl and getAuthenticatedFetchOptions and return turn details', async () => {
+    it('should call the authenticated endpoint through the interceptor and return turn details', async () => {
       const params = {
         turnId: 'turn456',
         accessToken: 'token123'
@@ -149,17 +153,15 @@ describe('turnMachineUtils', () => {
         json: vi.fn().mockResolvedValue(mockTurns)
       })
 
-      const { getAuthenticatedFetchOptions } = await import('../../../config/api')
-
       const result = await loadTurnDetails(params)
 
       expect(result).toEqual({ id: 'turn456', status: 'PENDING' })
-      expect(getAuthenticatedFetchOptions).toHaveBeenCalledWith('token123')
       expect(global.fetch).toHaveBeenCalledWith(
         'http://localhost:8080/api/turns/my-turns',
         expect.objectContaining({
           method: 'GET',
-          credentials: 'include'
+          credentials: 'include',
+          headers: expect.objectContaining({ Authorization: 'Bearer token123' })
         })
       )
     })
@@ -181,7 +183,9 @@ describe('turnMachineUtils', () => {
       await expect(loadTurnDetails(params)).rejects.toThrow('Turn with ID turn999 not found in your turns')
     })
 
-    it('should NOT hand-roll a manual refresh-token retry on 401', async () => {
+    // FBUG-003 — the util must not hand-roll any retry: the centralized interceptor
+    // owns the single refresh attempt, and a failed refresh ends the session.
+    it('delegates the 401 to the centralized interceptor (one refresh, no manual retry)', async () => {
       const params = {
         turnId: 'turn456',
         accessToken: 'token123'
@@ -190,7 +194,8 @@ describe('turnMachineUtils', () => {
         status: 401,
         ok: false,
         statusText: 'Unauthorized',
-        text: vi.fn().mockResolvedValue('Unauthorized')
+        text: vi.fn().mockResolvedValue('Unauthorized'),
+        json: vi.fn().mockResolvedValue({ message: 'Unauthorized' })
       })
 
       const { AuthService } = await import('../../service/auth-service.service')
@@ -198,7 +203,14 @@ describe('turnMachineUtils', () => {
       await expect(loadTurnDetails(params)).rejects.toThrow()
 
       expect(AuthService.refreshToken).not.toHaveBeenCalled()
-      expect(global.fetch).toHaveBeenCalledTimes(1)
+      const calls = (global.fetch as Mock).mock.calls
+      expect(calls.filter(([url]) => url === REFRESH_URL)).toHaveLength(1)
+      // no retry of the original request when the refresh fails
+      expect(calls.filter(([url]) => url === 'http://localhost:8080/api/turns/my-turns')).toHaveLength(1)
+      // best-effort signout to revoke the (rotated) refresh cookie on terminal expiry
+      const SIGNOUT_URL = 'http://localhost:8080/api/auth/signout'
+      expect(calls.filter(([url]) => url === SIGNOUT_URL)).toHaveLength(1)
+      expect(orchestratorSend).toHaveBeenCalledWith({ type: 'SESSION_EXPIRED' })
     })
 
     it('should throw error on API failure', async () => {
@@ -289,13 +301,17 @@ describe('turnMachineUtils', () => {
 
       await expect(completeTurn(params)).resolves.not.toThrow()
 
-      expect(global.fetch).toHaveBeenCalledWith('http://localhost:8080/api/turns/turn456/complete', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer token123',
-          'Content-Type': 'application/json'
-        }
-      })
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/turns/turn456/complete',
+        expect.objectContaining({
+          method: 'POST',
+          credentials: 'include',
+          headers: expect.objectContaining({
+            Authorization: 'Bearer token123',
+            'Content-Type': 'application/json'
+          })
+        })
+      )
     })
 
     it('should throw error when complete fails', async () => {
@@ -325,13 +341,17 @@ describe('turnMachineUtils', () => {
 
       await expect(noShowTurn(params)).resolves.not.toThrow()
 
-      expect(global.fetch).toHaveBeenCalledWith('http://localhost:8080/api/turns/turn456/no-show', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer token123',
-          'Content-Type': 'application/json'
-        }
-      })
+      expect(global.fetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/turns/turn456/no-show',
+        expect.objectContaining({
+          method: 'POST',
+          credentials: 'include',
+          headers: expect.objectContaining({
+            Authorization: 'Bearer token123',
+            'Content-Type': 'application/json'
+          })
+        })
+      )
     })
 
     it('should throw error when no-show fails', async () => {
@@ -345,6 +365,71 @@ describe('turnMachineUtils', () => {
       })
 
       await expect(noShowTurn(params)).rejects.toThrow('Failed to mark turn as no-show: No-show failed')
+    })
+  })
+
+  // FBUG-003 — these three mutations (patient cancels; doctor completes / marks
+  // no-show) used to call raw `fetch` with a hand-rolled Authorization header, so an
+  // expired access token dropped the action silently: no refresh, no retry, no
+  // re-login. They now go through the centralized interceptor like everything else.
+  describe('expired access token (FBUG-003)', () => {
+    const FRESH = 'fresh-token'
+
+    const respondWithExpiry = (url: string, init: RequestInit) => {
+      if (url === REFRESH_URL) {
+        return {
+          ok: true,
+          status: 200,
+          json: vi.fn().mockResolvedValue({ id: 'u1', role: 'DOCTOR', status: 'ACTIVE', accessToken: FRESH })
+        }
+      }
+      const auth = (init.headers as Record<string, string>).Authorization
+      return auth === `Bearer ${FRESH}`
+        ? { ok: true, status: 200, json: vi.fn().mockResolvedValue({}), text: vi.fn().mockResolvedValue('') }
+        : {
+            ok: false,
+            status: 401,
+            statusText: 'Unauthorized',
+            json: vi.fn().mockResolvedValue({ message: 'Unauthorized' }),
+            text: vi.fn().mockResolvedValue('Unauthorized')
+          }
+    }
+
+    const cases: Array<[string, (p: { accessToken: string; turnId: string }) => Promise<unknown>, string]> = [
+      ['cancelTurn', cancelTurn, 'http://localhost:8080/api/turns/turn456/cancel'],
+      ['completeTurn', completeTurn, 'http://localhost:8080/api/turns/turn456/complete'],
+      ['noShowTurn', noShowTurn, 'http://localhost:8080/api/turns/turn456/no-show']
+    ]
+
+    it.each(cases)('%s refreshes the token and retries once, then succeeds', async (_name, action, url) => {
+      ;(global.fetch as Mock).mockImplementation(respondWithExpiry)
+
+      await expect(action({ accessToken: 'expired-token', turnId: 'turn456' })).resolves.not.toThrow()
+
+      const calls = (global.fetch as Mock).mock.calls
+      expect(calls.filter(([u]) => u === REFRESH_URL)).toHaveLength(1)
+
+      const actionCalls = calls.filter(([u]) => u === url)
+      expect(actionCalls).toHaveLength(2)
+      expect((actionCalls[0][1].headers as Record<string, string>).Authorization).toBe('Bearer expired-token')
+      expect((actionCalls[1][1].headers as Record<string, string>).Authorization).toBe(`Bearer ${FRESH}`)
+      expect(orchestratorSend).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'TOKEN_REFRESHED', accessToken: FRESH })
+      )
+    })
+
+    it.each(cases)('%s ends the session when the refresh fails', async (_name, action) => {
+      ;(global.fetch as Mock).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        json: vi.fn().mockResolvedValue({ message: 'Unauthorized' }),
+        text: vi.fn().mockResolvedValue('Unauthorized')
+      })
+
+      await expect(action({ accessToken: 'expired-token', turnId: 'turn456' })).rejects.toThrow()
+
+      expect(orchestratorSend).toHaveBeenCalledWith({ type: 'SESSION_EXPIRED' })
     })
   })
 })

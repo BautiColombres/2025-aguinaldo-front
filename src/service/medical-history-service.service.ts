@@ -1,4 +1,4 @@
-import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
+import { API_CONFIG, authenticatedFetch, buildApiUrl } from '../../config/api';
 import { logger } from '../utils/logger';
 import type {
   MedicalHistory,
@@ -20,8 +20,7 @@ export class MedicalHistoryService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.ADD_MEDICAL_HISTORY.replace('{doctorId}', doctorId));
 
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'POST',
         body: JSON.stringify(request),
       });
@@ -58,8 +57,7 @@ export class MedicalHistoryService {
     );
 
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'PUT',
         body: JSON.stringify(request),
       });
@@ -95,8 +93,7 @@ export class MedicalHistoryService {
     );
 
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'DELETE',
       });
 
@@ -124,8 +121,7 @@ export class MedicalHistoryService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_DOCTOR_MEDICAL_HISTORY.replace('{doctorId}', doctorId));
 
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 
@@ -155,8 +151,7 @@ export class MedicalHistoryService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_PATIENT_MEDICAL_HISTORY.replace('{patientId}', patientId));
 
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 
@@ -191,8 +186,7 @@ export class MedicalHistoryService {
     );
 
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 
@@ -228,8 +222,7 @@ export class MedicalHistoryService {
     );
 
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 

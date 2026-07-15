@@ -4,9 +4,15 @@ import { MedicalHistoryService } from '../service/medical-history-service.servic
 import { orchestrator } from '../core/Orchestrator';
 import { UI_MACHINE_ID } from './uiMachine';
 import { formatDate } from '../utils/dateTimeUtils';
+// FBUG-003 — the backend now returns a JSON body for 403 ("Access denied"), so the
+// error kind (not the raw message text) decides the copy.
+import { API_ERROR_MESSAGES, classifyApiError } from '../../config/api';
 
 export const MEDICAL_HISTORY_MACHINE_ID = "medicalHistory"; 
 export const MEDICAL_HISTORY_MACHINE_EVENT_TYPES = [
+  // FBUG-003 / FSEC — silent token refresh + credential wipe on logout & expiry.
+  'TOKEN_REFRESHED',
+  'CLEAR_ACCESS_TOKEN',
   "LOAD_PATIENT_MEDICAL_HISTORY",
   "ADD_HISTORY_ENTRY_FOR_TURN",
   "UPDATE_HISTORY_ENTRY",
@@ -40,6 +46,8 @@ interface MedicalHistoryMachineContext {
 }
 
 export type MedicalHistoryMachineEvent =
+  | { type: 'TOKEN_REFRESHED'; accessToken: string }
+  | { type: 'CLEAR_ACCESS_TOKEN' }
   | { type: 'LOAD_PATIENT_MEDICAL_HISTORY'; patientId: string; accessToken: string; doctorId?: string }
   | { type: 'ADD_HISTORY_ENTRY_FOR_TURN'; turnId: string; content: string; tags?: string[]; accessToken: string; doctorId: string; turnInfo?: { patientName?: string; scheduledAt?: string; status?: string } }
   | { type: 'UPDATE_HISTORY_ENTRY'; historyId: string; content: string; tags?: string[]; accessToken: string; doctorId: string }
@@ -74,6 +82,25 @@ export const medicalHistoryMachine = createMachine({
     accessToken: null,
     doctorId: null,
   } as MedicalHistoryMachineContext,
+  on: {
+    // FBUG-003 — the interceptor silently refreshed the access token (401 -> refresh
+    // -> retry). Adopt it IN PLACE: pure assign, no target, no refetch. Do NOT reuse
+    // SET_AUTH here — that means "a session just started" and re-bootstraps machines.
+    TOKEN_REFRESHED: {
+      actions: assign({
+        accessToken: ({ event }) => event.accessToken,
+      }),
+    },
+    // FSEC — logout / session expiry must wipe the in-memory credentials from EVERY
+    // machine. A bearer left behind in context is a live, usable credential (the
+    // retry-401 path can even leave a freshly minted one here).
+    CLEAR_ACCESS_TOKEN: {
+      actions: assign({
+        accessToken: null,
+        doctorId: null,
+      }),
+    },
+  },
   states: {
     idle: {
       on: {
@@ -229,8 +256,10 @@ export const medicalHistoryMachine = createMachine({
               if (errorMessage) {
                 if (errorMessage.includes('404')) {
                   message += ': Turno no encontrado';
-                } else if (errorMessage.includes('401') || errorMessage.includes('403')) {
-                  message += ': No tienes permisos suficientes';
+                } else if (classifyApiError(error).kind === 'forbidden') {
+                  message += `: ${API_ERROR_MESSAGES.forbidden}`;
+                } else if (classifyApiError(error).kind === 'unauthorized') {
+                  message += ': Tu sesión expiró. Por favor, iniciá sesión nuevamente.';
                 } else {
                   message += ': ' + errorMessage;
                 }

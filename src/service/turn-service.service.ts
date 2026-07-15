@@ -1,6 +1,8 @@
-import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
+// FBUG-003 — the ad-hoc `handleAuthError()` that dispatched HANDLE_AUTH_ERROR with
+// a never-invoked `retryAction` is gone: 401 → refresh → retry is now handled once,
+// centrally, by `authenticatedFetch` (config/api).
+import { API_CONFIG, authenticatedFetch, buildApiUrl, getDefaultFetchOptions } from '../../config/api';
 import { logger } from '../utils/logger';
-import { orchestrator } from '#/core/Orchestrator';
 import dayjs from '#/utils/dayjs.config';
 import type {
   Doctor,
@@ -10,28 +12,14 @@ import type {
 } from '../models/Turn';
 import type { TurnModifyRequest } from '../models/TurnModifyRequest';
 
-async function handleAuthError(error: Response, retryFn?: () => Promise<any>): Promise<void> {
-  if (error.status === 401) {
-    orchestrator.sendToMachine('auth', { 
-      type: 'HANDLE_AUTH_ERROR', 
-      error,
-      retryAction: retryFn 
-    });
-  }
-}
-
 export class TurnService {
   static async getMyModifyRequests(accessToken: string): Promise<TurnModifyRequest[]> {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_MY_MODIFY_REQUESTS);
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
       
-      if (response.status === 401) {
-        await handleAuthError(response, () => this.getMyModifyRequests(accessToken));
-      }
       
       if (!response.ok) {
         const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
@@ -54,8 +42,7 @@ export class TurnService {
     let url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_DOCTOR_MODIFY_REQUESTS);
     url = url.replace('{doctorId}', doctorId);
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 
@@ -80,8 +67,7 @@ export class TurnService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_DOCTORS);
     
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 
@@ -109,8 +95,7 @@ export class TurnService {
     const url = buildApiUrl(`${API_CONFIG.ENDPOINTS.GET_AVAILABLE_TURNS}?doctorId=${doctorId}&date=${date}`);
     
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
       if (!response.ok) {
@@ -136,13 +121,10 @@ export class TurnService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.CREATE_TURN);
     
     try {
-      const fetchOptions = {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'POST',
         body: JSON.stringify(data),
-      };
-      
-      const response = await fetch(url, fetchOptions);
+      });
 
       if (!response.ok) {
         const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
@@ -170,8 +152,7 @@ export class TurnService {
       ? `${buildApiUrl(API_CONFIG.ENDPOINTS.GET_MY_TURNS)}?status=${status}`
       : buildApiUrl(API_CONFIG.ENDPOINTS.GET_MY_TURNS);
     try {
-      const response = await  fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
       if (!response.ok) {
@@ -201,8 +182,7 @@ export class TurnService {
       : `${buildApiUrl(API_CONFIG.ENDPOINTS.GET_PATIENT_TURNS)}/${patientId}`;
     
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 
@@ -232,8 +212,7 @@ export class TurnService {
       : `${buildApiUrl(API_CONFIG.ENDPOINTS.GET_DOCTOR_TURNS)}/${doctorId}`;
     
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 
@@ -260,8 +239,7 @@ export class TurnService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_DOCTOR_AVAILABLE_SLOTS.replace('{doctorId}', doctorId) + `?fromDate=${fromDate}&toDate=${toDate}`);
     
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
       if (!response.ok) {
@@ -294,8 +272,7 @@ export class TurnService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.MODIFY_TURN_REQUEST);
     
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'POST',
         body: JSON.stringify(data),
       });
@@ -326,14 +303,10 @@ export class TurnService {
   static async approveModifyRequest(requestId: string, accessToken: string): Promise<any> {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.APPROVE_MODIFY_REQUEST.replace('{requestId}', requestId));
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'POST',
       });
       
-      if (response.status === 401) {
-        await handleAuthError(response, () => this.approveModifyRequest(requestId, accessToken));
-      }
       
       if (!response.ok) {
         const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
@@ -353,14 +326,10 @@ export class TurnService {
   static async rejectModifyRequest(requestId: string, accessToken: string): Promise<any> {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.REJECT_MODIFY_REQUEST.replace('{requestId}', requestId));
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'POST',
       });
       
-      if (response.status === 401) {
-        await handleAuthError(response, () => this.rejectModifyRequest(requestId, accessToken));
-      }
       
       if (!response.ok) {
         const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
@@ -387,15 +356,11 @@ export class TurnService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.CREATE_RATING.replace('{turnId}', turnId));
     
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'POST',
         body: JSON.stringify(ratingData),
       });
 
-      if (response.status === 401) {
-        await handleAuthError(response, () => this.createRating(turnId, ratingData, accessToken));
-      }
 
       if (!response.ok) {
         const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
@@ -421,14 +386,11 @@ export class TurnService {
       : buildApiUrl(API_CONFIG.ENDPOINTS.GET_RATING_SUBCATEGORIES);
     
     try {
-      const options = accessToken 
-        ? getAuthenticatedFetchOptions(accessToken)
-        : { headers: { 'Content-Type': 'application/json' } };
-
-      const response = await fetch(url, {
-        ...options,
-        method: 'GET',
-      });
+      // Public when called without a session (the endpoint allows it); the
+      // authenticated variant goes through the 401 → refresh → retry interceptor.
+      const response = accessToken
+        ? await authenticatedFetch(url, accessToken, { method: 'GET' })
+        : await fetch(url, { ...getDefaultFetchOptions(), method: 'GET' });
 
       if (!response.ok) {
         const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
@@ -455,16 +417,9 @@ export class TurnService {
     }
 
     try {
-      const options = accessToken ? getAuthenticatedFetchOptions(accessToken) : { headers: { 'Content-Type': 'application/json' } };
-
-      const response = await fetch(url, {
-        ...options,
-        method: 'GET',
-      });
-
-      if (response.status === 401) {
-        await handleAuthError(response, () => this.getRatedSubcategoryCounts(ratedId, accessToken, raterRole));
-      }
+      const response = accessToken
+        ? await authenticatedFetch(url, accessToken, { method: 'GET' })
+        : await fetch(url, { ...getDefaultFetchOptions(), method: 'GET' });
 
       if (!response.ok) {
         const errorData: any = await response.json().catch(() => ({}));

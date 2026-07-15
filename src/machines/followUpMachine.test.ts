@@ -20,8 +20,9 @@ vi.mock('../service/follow-up-service.service', () => ({
   },
 }));
 
-import { followUpMachine } from './followUpMachine';
+import { followUpMachine, DUPLICATE_FOLLOWUP_MESSAGE } from './followUpMachine';
 import { FollowUpService } from '../service/follow-up-service.service';
+import { ApiError } from '../../config/api';
 import { orchestrator } from '#/core/Orchestrator';
 
 const due = (over: Partial<DueForFollowUp> = {}): DueForFollowUp => ({
@@ -97,9 +98,12 @@ describe('followUpMachine', () => {
       expect(actor.getSnapshot().context.error).toBe(null);
     });
 
-    it('handles a 409 duplicate gracefully with an error snackbar', async () => {
+    // FBUG-002 — a duplicate reminder (backend dup-guard → 409) used to surface an
+    // opaque/blank snackbar. The 409 is now detected structurally (status), never by
+    // string-matching the backend prose, and mapped to its own localized copy.
+    it('maps a 409 duplicate to the specific warning snackbar (FBUG-002)', async () => {
       vi.mocked(FollowUpService.createReminder).mockRejectedValueOnce(
-        new Error('Ya existe un recordatorio activo'),
+        new ApiError('Active follow-up reminder already exists for this medical history', 409),
       );
 
       actor.send({
@@ -114,7 +118,60 @@ describe('followUpMachine', () => {
         expect(actor.getSnapshot().value).toBe('idle');
       });
 
-      expect(actor.getSnapshot().context.error).toContain('Ya existe un recordatorio activo');
+      expect(orchestrator.sendToMachine).toHaveBeenCalledWith('ui', {
+        type: 'OPEN_SNACKBAR',
+        message: DUPLICATE_FOLLOWUP_MESSAGE,
+        severity: 'warning',
+      });
+      expect(DUPLICATE_FOLLOWUP_MESSAGE).toBe('Ya existe un recordatorio activo para esta consulta');
+      expect(actor.getSnapshot().context.error).toBe(DUPLICATE_FOLLOWUP_MESSAGE);
+    });
+
+    it('keeps the generic error snackbar for a non-409 failure', async () => {
+      vi.mocked(FollowUpService.createReminder).mockRejectedValueOnce(
+        new ApiError('Internal server error', 500),
+      );
+
+      actor.send({
+        type: 'CREATE_FOLLOWUP',
+        historyId: 'history-1',
+        months: 6,
+        accessToken: 'token-123',
+        doctorId: 'doctor-1',
+      });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(actor.getSnapshot().context.error).toBe('Internal server error');
+      expect(orchestrator.sendToMachine).toHaveBeenCalledWith('ui', {
+        type: 'OPEN_SNACKBAR',
+        message: 'Internal server error',
+        severity: 'error',
+      });
+      expect(orchestrator.sendToMachine).not.toHaveBeenCalledWith(
+        'ui',
+        expect.objectContaining({ severity: 'warning' }),
+      );
+    });
+
+    it('falls back to a generic message when the rejection carries no message', async () => {
+      vi.mocked(FollowUpService.createReminder).mockRejectedValueOnce('boom');
+
+      actor.send({
+        type: 'CREATE_FOLLOWUP',
+        historyId: 'history-1',
+        months: 3,
+        accessToken: 'token-123',
+        doctorId: 'doctor-1',
+      });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(actor.getSnapshot().context.error).toBe('Error al crear el recordatorio de control');
       expect(orchestrator.sendToMachine).toHaveBeenCalledWith(
         'ui',
         expect.objectContaining({ type: 'OPEN_SNACKBAR', severity: 'error' }),

@@ -6,9 +6,16 @@ import { UI_MACHINE_ID } from "./uiMachine";
 import { MEDICAL_HISTORY_MACHINE_ID } from "./medicalHistoryMachine";
 import type { Patient } from "../models/Doctor";
 import type { DoctorMetrics } from "../service/doctor-service.service";
+// FBUG-003 — classify by kind instead of sniffing the raw body/message: the backend
+// now returns a JSON body for 403 ({"error":"FORBIDDEN","message":"Access denied"}),
+// so a `message.includes('403')` check no longer matches.
+import { API_ERROR_MESSAGES, classifyApiError } from "../../config/api";
 
 export const DOCTOR_MACHINE_ID = "doctor";
 export const DOCTOR_MACHINE_EVENT_TYPES = [
+  // FBUG-003 / FSEC — silent token refresh + credential wipe on logout & expiry.
+  'TOKEN_REFRESHED',
+  'CLEAR_ACCESS_TOKEN',
   "SET_AUTH",
   "RESET",
   "TOGGLE_DAY",
@@ -304,7 +311,10 @@ const doctorMachine = createMachine({
                     errorMessage = "No se pudo conectar con el servidor. Verifica tu conexión.";
                   } else if (error?.message?.includes('404')) {
                     errorMessage = "Paciente no encontrado.";
-                  } else if (error?.message?.includes('401') || error?.message?.includes('403')) {
+                  } else if (classifyApiError(error).kind === 'forbidden') {
+                    // A 403 is a permission denial (e.g. a PENDING doctor), NOT an expiry.
+                    errorMessage = API_ERROR_MESSAGES.forbidden;
+                  } else if (classifyApiError(error).kind === 'unauthorized') {
                     errorMessage = "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.";
                   } else if (error?.message) {
                     errorMessage = error.message;
@@ -425,7 +435,10 @@ const doctorMachine = createMachine({
                     if (error?.message?.includes('404')) {
                       return "Servicio no disponible. Inténtalo más tarde.";
                     }
-                    if (error?.message?.includes('401') || error?.message?.includes('403')) {
+                    if (classifyApiError(error).kind === 'forbidden') {
+                      return API_ERROR_MESSAGES.forbidden;
+                    }
+                    if (classifyApiError(error).kind === 'unauthorized') {
                       return "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.";
                     }
                     return error?.message || "Error al guardar la disponibilidad. Inténtalo de nuevo.";
@@ -491,7 +504,10 @@ const doctorMachine = createMachine({
                     if (error?.message?.includes('404')) {
                       return "Métricas no disponibles.";
                     }
-                    if (error?.message?.includes('401') || error?.message?.includes('403')) {
+                    if (classifyApiError(error).kind === 'forbidden') {
+                      return API_ERROR_MESSAGES.forbidden;
+                    }
+                    if (classifyApiError(error).kind === 'unauthorized') {
                       return "Tu sesión ha expirado. Por favor, inicia sesión nuevamente.";
                     }
                     return error?.message || "Error al cargar las métricas. Inténtalo de nuevo.";
@@ -515,6 +531,23 @@ const doctorMachine = createMachine({
   },
 
   on: {
+    // FBUG-003 — the interceptor silently refreshed the access token (401 -> refresh
+    // -> retry). Adopt it IN PLACE: pure assign, no target, no refetch. Do NOT reuse
+    // SET_AUTH here — that means "a session just started" and re-bootstraps machines.
+    TOKEN_REFRESHED: {
+      actions: assign({
+        accessToken: ({ event }) => event.accessToken,
+      }),
+    },
+    // FSEC — logout / session expiry must wipe the in-memory credentials from EVERY
+    // machine. A bearer left behind in context is a live, usable credential (the
+    // retry-401 path can even leave a freshly minted one here).
+    CLEAR_ACCESS_TOKEN: {
+      actions: assign({
+        accessToken: null,
+        doctorId: null,
+      }),
+    },
     SET_AUTH: {
       actions: assign({
         accessToken: ({ event }) => event.accessToken,

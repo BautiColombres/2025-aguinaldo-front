@@ -6,6 +6,9 @@ import { UI_MACHINE_ID } from "./uiMachine";
 
 export const FILES_MACHINE_ID = "files";
 export const FILES_MACHINE_EVENT_TYPES = [
+  // FBUG-003 / FSEC — silent token refresh + credential wipe on logout & expiry.
+  'TOKEN_REFRESHED',
+  'CLEAR_ACCESS_TOKEN',
   "SET_AUTH",
   "UPLOAD_TURN_FILE",
   "DELETE_TURN_FILE", 
@@ -29,6 +32,8 @@ export interface FilesMachineContext {
 }
 
 export type FilesMachineEvent =
+  | { type: 'TOKEN_REFRESHED'; accessToken: string }
+  | { type: 'CLEAR_ACCESS_TOKEN' }
   | { type: "SET_AUTH"; accessToken: string }
   | { type: "UPLOAD_TURN_FILE"; turnId: string; file: File }
   | { type: "DELETE_TURN_FILE"; turnId: string }
@@ -57,6 +62,24 @@ export const filesMachine = createMachine({
   types: {
     context: {} as FilesMachineContext,
     events: {} as FilesMachineEvent,
+  },
+  on: {
+    // FBUG-003 — the interceptor silently refreshed the access token (401 -> refresh
+    // -> retry). Adopt it IN PLACE: pure assign, no target, no refetch. Do NOT reuse
+    // SET_AUTH here — that means "a session just started" and re-bootstraps machines.
+    TOKEN_REFRESHED: {
+      actions: assign({
+        accessToken: ({ event }) => event.accessToken,
+      }),
+    },
+    // FSEC — logout / session expiry must wipe the in-memory credentials from EVERY
+    // machine. A bearer left behind in context is a live, usable credential (the
+    // retry-401 path can even leave a freshly minted one here).
+    CLEAR_ACCESS_TOKEN: {
+      actions: assign({
+        accessToken: null,
+      }),
+    },
   },
   states: {
     idle: {

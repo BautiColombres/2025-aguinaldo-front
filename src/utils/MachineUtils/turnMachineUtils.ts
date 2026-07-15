@@ -1,5 +1,5 @@
 import { TurnService } from "../../service/turn-service.service";
-import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from "../../../config/api";
+import { API_CONFIG, authenticatedFetch, buildApiUrl } from "../../../config/api";
 import type { TurnResponse } from "../../models/Turn";
 
 /**
@@ -74,13 +74,7 @@ export const createTurn = async ({ accessToken, userId, doctorId, scheduledAt, m
  */
 export const cancelTurn = async ({ accessToken, turnId }: CancelTurnParams): Promise<void> => {
   const url = buildApiUrl(API_CONFIG.ENDPOINTS.CANCEL_TURN.replace('{turnId}', turnId));
-  const response = await fetch(url, {
-    method: 'PATCH',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    }
-  });
+  const response = await authenticatedFetch(url, accessToken, { method: 'PATCH' });
 
   if (!response.ok) {
     const errorData = await response.text();
@@ -93,13 +87,7 @@ export const cancelTurn = async ({ accessToken, turnId }: CancelTurnParams): Pro
  */
 export const completeTurn = async ({ accessToken, turnId }: CompleteTurnParams): Promise<void> => {
   const url = buildApiUrl(`/api/turns/${turnId}/complete`);
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    }
-  });
+  const response = await authenticatedFetch(url, accessToken, { method: 'POST' });
 
   if (!response.ok) {
     const errorData = await response.text();
@@ -112,13 +100,7 @@ export const completeTurn = async ({ accessToken, turnId }: CompleteTurnParams):
  */
 export const noShowTurn = async ({ accessToken, turnId }: NoShowTurnParams): Promise<void> => {
   const url = buildApiUrl(`/api/turns/${turnId}/no-show`);
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    }
-  });
+  const response = await authenticatedFetch(url, accessToken, { method: 'POST' });
 
   if (!response.ok) {
     const errorData = await response.text();
@@ -142,9 +124,8 @@ export const createModifyTurnRequest = async ({ accessToken, turnId, newSchedule
 export const loadTurnDetails = async ({ turnId, accessToken }: { turnId: string; accessToken: string }): Promise<TurnResponse | null> => {
   try {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_MY_TURNS);
-    const response = await fetch(url, {
+    const response = await authenticatedFetch(url, accessToken, {
       method: 'GET',
-      ...getAuthenticatedFetchOptions(accessToken),
     });
 
     if (!response.ok) {

@@ -408,8 +408,12 @@ const PatientDetails: React.FC = () => {
           </Box>
         </Box>
 
-        <Box sx={{ px: 3, pt: 1 }}>
-          <Paper elevation={1} sx={{ p: 3 }} data-testid="frequent-tags-section">
+        <Box sx={{ px: 3, pt: 1, pb: 4 }}>
+          <Paper
+            elevation={1}
+            sx={{ p: 3, pb: 4 }}
+            data-testid="frequent-tags-section"
+          >
             <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <History color="primary" />
               Etiquetas frecuentes
@@ -420,7 +424,7 @@ const PatientDetails: React.FC = () => {
                 No hay etiquetas frecuentes para este paciente.
               </Typography>
             ) : (
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1, pb: 1 }}>
                 {frequentTags.map((tf, index) => (
                   <Chip
                     key={`${tf.tag}-${index}`}

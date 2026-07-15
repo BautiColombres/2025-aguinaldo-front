@@ -14,7 +14,10 @@ export const AUTH_MACHINE_EVENT_TYPES = [
   'TOGGLE_MODE',
   'SUBMIT',
   'CHECK_AUTH',
-  'HANDLE_AUTH_ERROR'
+  // FBUG-003 — broadcast by the centralized `authenticatedFetch` interceptor
+  // (config/api) after a silent token refresh / on a definitive session loss.
+  'TOKEN_REFRESHED',
+  'SESSION_EXPIRED'
 ];
 
 export interface AuthMachineContext {
@@ -86,7 +89,12 @@ export type AuthMachineEvent =
   | { type: "SUBMIT" }
   | { type: "LOGOUT" }
   | { type: "CHECK_AUTH" }
-  | { type: "HANDLE_AUTH_ERROR"; error: any; retryAction?: () => Promise<any> }; 
+  // FBUG-003 — emitted by the `authenticatedFetch` interceptor after it silently
+  // refreshed the access token (401 → refresh → retry).
+  | { type: "TOKEN_REFRESHED"; accessToken: string }
+  // FBUG-003 — emitted by the interceptor when the refresh failed (or the retry
+  // still 401'd): the session is gone for good.
+  | { type: "SESSION_EXPIRED" };
 
 
 export const authMachine = createMachine({
@@ -96,6 +104,45 @@ export const authMachine = createMachine({
   types: {
     context: {} as AuthMachineContext,
     events: {} as AuthMachineEvent,
+  },
+  on: {
+    // The interceptor already refreshed and retried the request; the machine just
+    // adopts the new access token so components reading `authResponse.accessToken`
+    // stop handing out the stale one. Guarded so a stray broadcast cannot
+    // resurrect a logged-out session.
+    TOKEN_REFRESHED: {
+      guard: ({ context }) => context.isAuthenticated && !!context.authResponse,
+      actions: assign(({ context, event }) => {
+        const current = context.authResponse as SignInResponse;
+        if (!current || current.accessToken === event.accessToken) {
+          return {};
+        }
+        return {
+          authResponse: { ...current, accessToken: event.accessToken },
+        };
+      })
+    },
+    // Definitive session loss: clear the in-memory auth, warn and send to login.
+    // Guarded on `isAuthenticated` so concurrent failures cannot stack snackbars.
+    SESSION_EXPIRED: {
+      guard: ({ context }) => context.isAuthenticated,
+      target: ".idle",
+      actions: [
+        assign(() => ({
+          isAuthenticated: false,
+          authResponse: null
+        })),
+        () => {
+          orchestrator.send({ type: "CLEAR_ACCESS_TOKEN" });
+          orchestrator.send({ type: "NAVIGATE", to: "/" });
+          orchestrator.send({
+            type: "OPEN_SNACKBAR",
+            message: "Sesión expirada. Por favor, vuelve a iniciar sesión.",
+            severity: "error"
+          });
+        }
+      ]
+    }
   },
   states: {
     checkingAuth: {
@@ -159,9 +206,6 @@ export const authMachine = createMachine({
       on: {
         LOGOUT: {
           target: "loggingOut"
-        },
-        HANDLE_AUTH_ERROR: {
-          target: "refreshingToken"
         }
       },
       entry: ({ context }) => {
@@ -477,54 +521,6 @@ export const authMachine = createMachine({
               loading: false,
             };
           })
-        }
-      }
-    },
-
-    refreshingToken: {
-      invoke: {
-        src: fromPromise(async () => {
-          const response = await AuthService.refreshToken();
-          return response;
-        }),
-        input: ({ context }) => context,
-        onDone: {
-          target: "authenticated",
-          actions: [
-            assign(({ event }) => ({
-              authResponse: event.output
-            })),
-            ({ context, event }) => {
-              // Send updated auth data to other machines
-              const response = event.output;
-              context.send({ 
-                type: "SET_AUTH", 
-                accessToken: response.accessToken, 
-                userId: response.id,
-                userRole: response.role
-              });
-              
-            }
-          ]
-        },
-        onError: {
-          target: "idle",
-          actions: [
-            assign(() => ({
-              isAuthenticated: false,
-              authResponse: null
-            })),
-            () => {
-              // Navigate to login on refresh failure
-              orchestrator.send({ type: "CLEAR_ACCESS_TOKEN" });
-              orchestrator.send({ type: "NAVIGATE", to: "/" });
-              orchestrator.send({ 
-                type: "OPEN_SNACKBAR", 
-                message: "Sesión expirada. Por favor, vuelve a iniciar sesión.", 
-                severity: "error" 
-              });
-            }
-          ]
         }
       }
     }

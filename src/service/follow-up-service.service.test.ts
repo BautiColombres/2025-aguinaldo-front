@@ -1,32 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { FollowUpService } from './follow-up-service.service';
+import { ApiError, classifyApiError, isConflictError } from '../../config/api';
 import type { FollowUpReminder, DueForFollowUp } from '../models/FollowUpReminder';
 
-vi.mock('../../config/api', () => ({
-  API_CONFIG: {
-    BASE_URL: 'http://localhost:8080',
-    ENDPOINTS: {
-      CREATE_FOLLOWUP: '/api/doctors/{doctorId}/medical-history/{historyId}/followup',
-      GET_FOLLOWUPS: '/api/doctors/{doctorId}/followups',
-      DISMISS_FOLLOWUP: '/api/doctors/{doctorId}/followups/{reminderId}/dismiss',
-      GET_PATIENT_FOLLOWUPS: '/api/patients/{patientId}/followups',
-      GET_DUE_FOR_FOLLOWUP: '/api/doctors/{doctorId}/patients/due-for-followup',
-    },
-    DEFAULT_HEADERS: {
-      'Content-Type': 'application/json',
-    },
+// FBUG-003 — this suite runs against the REAL config/api so the centralized
+// `authenticatedFetch` interceptor (401 → refresh → retry) is exercised end to
+// end from a migrated service. Only the orchestrator (machine broadcast) is mocked.
+const { orchestratorSend } = vi.hoisted(() => ({ orchestratorSend: vi.fn() }));
+
+vi.mock('#/core/Orchestrator', () => ({
+  orchestrator: {
+    send: orchestratorSend,
+    sendToMachine: vi.fn(),
   },
-  buildApiUrl: vi.fn((endpoint: string) => `http://localhost:8080${endpoint}`),
-  getAuthenticatedFetchOptions: vi.fn((token: string) => ({
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  })),
 }));
 
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
+
+const REFRESH_URL = 'http://localhost:8080/api/auth/refresh-token';
 
 describe('FollowUpService', () => {
   const accessToken = 'access-token-123';
@@ -98,6 +90,42 @@ describe('FollowUpService', () => {
 
       await expect(FollowUpService.createReminder(accessToken, doctorId, historyId, 3))
         .rejects.toThrow('Ya existe un recordatorio activo');
+    });
+
+    // FBUG-002 — the duplicate-reminder guard (409) must be identifiable STRUCTURALLY
+    // (status/kind), never by string-matching the backend's wording, so the machine
+    // can map it to its own localized copy.
+    it('tags a 409 duplicate with status 409 so callers can identify it (FBUG-002)', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: () => Promise.resolve({ error: 'CONFLICT', message: 'whatever the backend says' }),
+      });
+
+      const error = await FollowUpService.createReminder(accessToken, doctorId, historyId, 3)
+        .then(() => null)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(Error);
+      expect(error).toBeInstanceOf(ApiError);
+      expect((error as ApiError).status).toBe(409);
+      expect(isConflictError(error)).toBe(true);
+      expect(classifyApiError(error).kind).toBe('conflict');
+    });
+
+    it('does NOT tag a non-409 failure as a conflict', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({ message: 'Boom' }),
+      });
+
+      const error = await FollowUpService.createReminder(accessToken, doctorId, historyId, 3)
+        .then(() => null)
+        .catch((e: unknown) => e);
+
+      expect((error as ApiError).status).toBe(500);
+      expect(isConflictError(error)).toBe(false);
     });
 
     it('throws a default error when the body carries no details', async () => {
@@ -261,6 +289,50 @@ describe('FollowUpService', () => {
 
       await expect(FollowUpService.getPatientReminders(accessToken, patientId))
         .rejects.toThrow('Network connection failed');
+    });
+  });
+
+  // FBUG-003 — a mid-session access-token expiry used to drop the action silently.
+  // Every service now goes through the centralized interceptor, so a 401 triggers
+  // a refresh and the original request is retried transparently.
+  describe('expired access token (FBUG-003)', () => {
+    const freshToken = 'fresh-access-token';
+
+    it('refreshes the token and retries the create, returning the created reminder', async () => {
+      mockFetch.mockImplementation(async (url: string, init: RequestInit) => {
+        if (url === REFRESH_URL) {
+          return {
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve({ id: 'doctor-1', role: 'DOCTOR', status: 'ACTIVE', accessToken: freshToken }),
+          };
+        }
+        const auth = (init.headers as Record<string, string>).Authorization;
+        return auth === `Bearer ${freshToken}`
+          ? { ok: true, status: 200, json: () => Promise.resolve(mockReminder) }
+          : { ok: false, status: 401, json: () => Promise.resolve({ message: 'Unauthorized' }) };
+      });
+
+      const result = await FollowUpService.createReminder(accessToken, doctorId, historyId, 3);
+
+      expect(result).toEqual(mockReminder);
+      expect(mockFetch.mock.calls.filter(([url]) => url === REFRESH_URL)).toHaveLength(1);
+      expect(orchestratorSend).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'TOKEN_REFRESHED', accessToken: freshToken }),
+      );
+    });
+
+    it('surfaces the error and signals SESSION_EXPIRED when the refresh fails', async () => {
+      mockFetch.mockImplementation(async () => ({
+        ok: false,
+        status: 401,
+        json: () => Promise.resolve({ message: 'Unauthorized' }),
+      }));
+
+      await expect(FollowUpService.getDueReminders(accessToken, doctorId))
+        .rejects.toThrow('Unauthorized');
+
+      expect(orchestratorSend).toHaveBeenCalledWith({ type: 'SESSION_EXPIRED' });
     });
   });
 });
