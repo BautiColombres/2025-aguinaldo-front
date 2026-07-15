@@ -1,4 +1,4 @@
-import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
+import { API_CONFIG, authenticatedFetch, buildApiUrl } from '../../config/api';
 import { logger } from '../utils/logger';
 import type { TurnModifyRequest } from '../models/TurnModifyRequest';
 
@@ -15,8 +15,7 @@ export class TurnModifyService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.MODIFY_TURN_REQUEST);
 
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'POST',
         body: JSON.stringify(request),
       });
@@ -43,8 +42,7 @@ export class TurnModifyService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_MY_MODIFY_REQUESTS);
 
     try {
-      const response = await  fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 

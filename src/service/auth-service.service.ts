@@ -1,4 +1,4 @@
-import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions, getDefaultFetchOptions } from '../../config/api';
+import { API_CONFIG, authenticatedFetch, buildApiUrl, getDefaultFetchOptions } from '../../config/api';
 import { logger } from '../utils/logger';
 import type {
     RegisterRequestData,
@@ -200,15 +200,14 @@ export class AuthService {
       const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_PROFILE.replace('{profileId}', profileId));
       
       try {
-        const response = await fetch(url, {
-          ...getAuthenticatedFetchOptions(accessToken),
+        const response = await authenticatedFetch(url, accessToken, {
           method: 'GET',
         });
-  
+
         if (!response.ok) {
           const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
           throw new Error(
-            errorData?.message || 
+            errorData?.message ||
             errorData?.error ||
             `Failed to fetch data profile! Status: ${response.status}`
           );
@@ -226,13 +225,8 @@ export class AuthService {
       const url = buildApiUrl(API_CONFIG.ENDPOINTS.UPDATE_PROFILE.replace('{profileId}', profileId));
 
       try {
-        const response = await fetch(url, {
-          ...getAuthenticatedFetchOptions(accessToken),
+        const response = await authenticatedFetch(url, accessToken, {
           method: 'PUT',
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
           body: JSON.stringify(updates),
         });
 
@@ -257,8 +251,7 @@ export class AuthService {
       const url = buildApiUrl(API_CONFIG.ENDPOINTS.DEACTIVATE_ACCOUNT);
 
       try {
-        const response = await fetch(url, {
-          ...getAuthenticatedFetchOptions(accessToken),
+        const response = await authenticatedFetch(url, accessToken, {
           method: 'DELETE',
         });
 

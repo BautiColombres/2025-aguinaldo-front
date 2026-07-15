@@ -14,6 +14,24 @@ const formatControlDate = (value: string): string => {
   return formatDate(value);
 };
 
+const GENERIC_RECOMMENDATION = 'Tu profesional te recomienda un control';
+
+/**
+ * Builds the reminder headline naming the recommending doctor.
+ * Never includes clinical data (tag/motive) — patient-facing, no PHI.
+ */
+const buildRecommendationText = (reminder: FollowUpReminder): string => {
+  const doctorName = reminder.doctorName?.trim();
+  if (!doctorName) {
+    return GENERIC_RECOMMENDATION;
+  }
+
+  const specialty = reminder.specialty?.trim();
+  const doctorLabel = specialty ? `Dr/a ${doctorName} — ${specialty}` : `Dr/a ${doctorName}`;
+
+  return `${doctorLabel} te recomienda un control`;
+};
+
 const PatientFollowUpReminders: React.FC = () => {
   const { followUpState, followUpSend } = useMachines();
   const { authState } = useAuthMachine();
@@ -30,7 +48,16 @@ const PatientFollowUpReminders: React.FC = () => {
   }, [accessToken, patientId]);
 
   return (
-    <Paper elevation={1} sx={{ p: 3 }} data-testid="patient-followup-reminders">
+    <Paper
+      elevation={2}
+      sx={{
+        p: 3,
+        borderRadius: 4,
+        border: '1px solid',
+        borderColor: 'divider',
+      }}
+      data-testid="patient-followup-reminders"
+    >
       <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <EventAvailableIcon color="primary" />
         Recordatorios de control
@@ -48,7 +75,7 @@ const PatientFollowUpReminders: React.FC = () => {
                 <EventAvailableIcon fontSize="small" color="primary" />
               </ListItemIcon>
               <ListItemText
-                primary="Tu profesional te recomienda un control"
+                primary={buildRecommendationText(r)}
                 secondary={
                   <Box component="span">
                     Control recomendado para el {formatControlDate(r.scheduledFor)}

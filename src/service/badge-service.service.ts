@@ -1,4 +1,4 @@
-import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
+import { API_CONFIG, authenticatedFetch, buildApiUrl } from '../../config/api';
 import { logger } from '../utils/logger';
 import type {
   Badge,
@@ -16,8 +16,7 @@ export class BadgeService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_USER_BADGE_PROGRESS.replace('{userId}', userId));
     
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 
@@ -61,8 +60,7 @@ export class BadgeService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.EVALUATE_USER_BADGES.replace('{userId}', userId));
     
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'POST',
       });
 

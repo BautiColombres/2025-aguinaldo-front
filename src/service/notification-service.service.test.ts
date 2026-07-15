@@ -4,6 +4,30 @@ import type { NotificationResponse } from './notification-service.service';
 
 // Mock the API config
 vi.mock('../../config/api', () => ({
+  // FBUG-003 — services now issue authenticated requests through the centralized
+  // `authenticatedFetch` interceptor (401 -> refresh -> retry, covered in config/api.test.ts).
+  // Here it is stubbed to a plain fetch so these suites keep asserting the request shape.
+  authenticatedFetch: vi.fn(
+    (
+      url: string,
+      token: string,
+      init: Omit<RequestInit, 'headers'> & {
+        headers?: Record<string, string>;
+        omitJsonContentType?: boolean;
+      } = {},
+    ) => {
+    const { omitJsonContentType, headers, ...rest } = init;
+    return fetch(url, {
+      ...rest,
+      headers: {
+        ...(omitJsonContentType ? {} : { 'Content-Type': 'application/json' }),
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
+      credentials: 'include',
+      signal: AbortSignal.timeout(10000),
+    });
+  }),
   API_CONFIG: {
     BASE_URL: 'http://localhost:8080',
     ENDPOINTS: {
@@ -82,7 +106,7 @@ describe('NotificationService', () => {
       expect(result).toEqual(mockNotifications);
     });
 
-    it('should handle 401 auth error and send to orchestrator', async () => {
+    it('surfaces a 401 and no longer dispatches the dead HANDLE_AUTH_ERROR event', async () => {
       const authErrorResponse = { message: 'Unauthorized' };
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -93,13 +117,13 @@ describe('NotificationService', () => {
       await expect(NotificationService.getNotifications(accessToken))
         .rejects.toThrow('Unauthorized');
 
-      // Verify orchestrator was called for auth error handling
+      // FBUG-003 — the 401 -> refresh -> retry cycle is owned by `authenticatedFetch`
+      // (config/api); services no longer hand-roll it.
       const { orchestrator } = await import('#/core/Orchestrator');
-      expect(orchestrator.sendToMachine).toHaveBeenCalledWith('auth', {
-        type: 'HANDLE_AUTH_ERROR',
-        error: expect.objectContaining({ status: 401 }),
-        retryAction: expect.any(Function)
-      });
+      expect(orchestrator.sendToMachine).not.toHaveBeenCalledWith(
+        'auth',
+        expect.objectContaining({ type: 'HANDLE_AUTH_ERROR' })
+      );
     });
 
     it('should throw error when fetch fails with non-401 error', async () => {
@@ -165,7 +189,7 @@ describe('NotificationService', () => {
       );
     });
 
-    it('should handle 401 auth error and send to orchestrator', async () => {
+    it('surfaces a 401 and no longer dispatches the dead HANDLE_AUTH_ERROR event', async () => {
       const authErrorResponse = { message: 'Unauthorized' };
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -176,13 +200,13 @@ describe('NotificationService', () => {
       await expect(NotificationService.deleteNotification(notificationId, accessToken))
         .rejects.toThrow('Unauthorized');
 
-      // Verify orchestrator was called for auth error handling
+      // FBUG-003 — the 401 -> refresh -> retry cycle is owned by `authenticatedFetch`
+      // (config/api); services no longer hand-roll it.
       const { orchestrator } = await import('#/core/Orchestrator');
-      expect(orchestrator.sendToMachine).toHaveBeenCalledWith('auth', {
-        type: 'HANDLE_AUTH_ERROR',
-        error: expect.objectContaining({ status: 401 }),
-        retryAction: expect.any(Function)
-      });
+      expect(orchestrator.sendToMachine).not.toHaveBeenCalledWith(
+        'auth',
+        expect.objectContaining({ type: 'HANDLE_AUTH_ERROR' })
+      );
     });
 
     it('should throw error when delete fails with non-401 error', async () => {

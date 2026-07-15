@@ -4,6 +4,30 @@ import type { MedicalHistory, CreateMedicalHistoryRequest, UpdateMedicalHistoryC
 
 // Mock the API config
 vi.mock('../../config/api', () => ({
+  // FBUG-003 — services now issue authenticated requests through the centralized
+  // `authenticatedFetch` interceptor (401 -> refresh -> retry, covered in config/api.test.ts).
+  // Here it is stubbed to a plain fetch so these suites keep asserting the request shape.
+  authenticatedFetch: vi.fn(
+    (
+      url: string,
+      token: string,
+      init: Omit<RequestInit, 'headers'> & {
+        headers?: Record<string, string>;
+        omitJsonContentType?: boolean;
+      } = {},
+    ) => {
+    const { omitJsonContentType, headers, ...rest } = init;
+    return fetch(url, {
+      ...rest,
+      headers: {
+        ...(omitJsonContentType ? {} : { 'Content-Type': 'application/json' }),
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
+      credentials: 'include',
+      signal: AbortSignal.timeout(10000),
+    });
+  }),
   API_CONFIG: {
     BASE_URL: 'http://localhost:8080',
     ENDPOINTS: {

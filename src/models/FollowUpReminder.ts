@@ -6,6 +6,10 @@ export interface FollowUpReminder {
   patientName: string;
   patientSurname: string;
   doctorId: string;
+  /** Full display name of the recommending doctor, e.g. "Ana Gomez". Optional: older payloads may omit it. */
+  doctorName?: string;
+  /** Specialty of the recommending doctor. Nullable: a doctor without a DoctorProfile yields null. */
+  specialty?: string | null;
   historyId: string;
   turnId: string;
   monthsUntilControl: number;

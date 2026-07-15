@@ -91,3 +91,66 @@ describe('PatientFollowUpReminders (F2-F4b)', () => {
     expect(screen.getByText(/No tenés recordatorios de control pendientes/i)).toBeInTheDocument();
   });
 });
+
+describe('PatientFollowUpReminders — recommending doctor (UX-1)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('names the recommending doctor and specialty when both are present', () => {
+    setup({
+      patientReminders: [
+        reminder({ doctorName: 'Ana Gomez', specialty: 'Cardiología' }),
+      ],
+    });
+
+    expect(
+      screen.getByText('Dr/a Ana Gomez — Cardiología te recomienda un control'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Tu profesional te recomienda un control/i)).not.toBeInTheDocument();
+  });
+
+  it('omits the dangling separator when the specialty is null', () => {
+    setup({
+      patientReminders: [reminder({ doctorName: 'Ana Gomez', specialty: null })],
+    });
+
+    expect(screen.getByText('Dr/a Ana Gomez te recomienda un control')).toBeInTheDocument();
+    expect(screen.queryByText(/—/)).not.toBeInTheDocument();
+  });
+
+  it('omits the dangling separator when the specialty is absent', () => {
+    setup({ patientReminders: [reminder({ doctorName: 'Ana Gomez' })] });
+
+    expect(screen.getByText('Dr/a Ana Gomez te recomienda un control')).toBeInTheDocument();
+    expect(screen.queryByText(/—/)).not.toBeInTheDocument();
+  });
+
+  it('ignores a blank doctor name and falls back to the generic copy', () => {
+    setup({ patientReminders: [reminder({ doctorName: '   ', specialty: 'Cardiología' })] });
+
+    expect(screen.getByText('Tu profesional te recomienda un control')).toBeInTheDocument();
+    expect(screen.queryByText(/—/)).not.toBeInTheDocument();
+  });
+
+  it('falls back to the generic copy when the doctor name is absent', () => {
+    setup({ patientReminders: [reminder()] });
+
+    expect(screen.getByText('Tu profesional te recomienda un control')).toBeInTheDocument();
+    expect(screen.queryByText(/Dr\/a/)).not.toBeInTheDocument();
+  });
+
+  it('still renders the control date alongside the doctor name', () => {
+    setup({
+      patientReminders: [
+        reminder({
+          doctorName: 'Ana Gomez',
+          specialty: 'Cardiología',
+          scheduledFor: '2024-08-10',
+        }),
+      ],
+    });
+
+    expect(screen.getByText(/Control recomendado para el 10\/08\/2024/)).toBeInTheDocument();
+  });
+});

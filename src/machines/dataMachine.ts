@@ -7,12 +7,13 @@ import { classifyApiError } from "../../config/api";
 import type { PendingDoctor, AdminStats } from "../models/Admin";
 import type { Doctor } from "../models/Turn";
 import { UI_MACHINE_ID } from "./uiMachine";
-import { AUTH_MACHINE_ID } from "./authMachine";
 import { TurnModifyRequest } from "#/models/TurnModifyRequest";
 import type { Badge, BadgeProgress } from "../models/Badge";
 
 export const DATA_MACHINE_ID = "data";
 export const DATA_MACHINE_EVENT_TYPES = [
+  // FBUG-003 / FSEC — silent token refresh + credential wipe on logout & expiry.
+  'TOKEN_REFRESHED',
   "SET_AUTH",
   "CLEAR_ACCESS_TOKEN", 
   "RELOAD_DOCTORS",
@@ -164,6 +165,7 @@ export const DataMachineDefaultContext: DataMachineContext = {
 };
 
 export type DataMachineEvent =
+  | { type: 'TOKEN_REFRESHED'; accessToken: string }
   | { type: "SET_AUTH"; accessToken: string; userId: string; userRole: string; doctorId?: string }
   | { type: "CLEAR_ACCESS_TOKEN" }
   | { type: "RELOAD_DOCTORS" }
@@ -188,6 +190,25 @@ export const dataMachine = createMachine({
   initial: "idle",
   context: DataMachineDefaultContext,
   on: {
+    // FBUG-003 — the interceptor silently refreshed the access token (401 -> refresh
+    // -> retry). Adopt it IN PLACE: pure assign, no target, no refetch. Do NOT reuse
+    // SET_AUTH here — that means "a session just started" and re-bootstraps machines.
+    TOKEN_REFRESHED: {
+      actions: assign({
+        accessToken: ({ event }) => event.accessToken,
+      }),
+    },
+    // Covers the fetching* states too (idle/ready define their own richer reset):
+    // abort whatever is in flight and drop the credentials.
+    CLEAR_ACCESS_TOKEN: {
+      target: ".idle",
+      actions: assign({
+        accessToken: null,
+        userRole: null,
+        userId: null,
+        doctorId: null,
+      }),
+    },
     CHECK_URL_CANCEL_TURN: {
       actions: assign({
         pendingCancelTurnId: ({ event }) => event.turnId
@@ -546,8 +567,10 @@ export const dataMachine = createMachine({
             }),
             ({ event }) => {
               const classified = classifyApiError(event.error, "Error al cargar doctores");
+              // FBUG-003 — the interceptor owns the 401 path (refresh/retry, then
+              // SESSION_EXPIRED). Stay quiet so the user gets ONE message, not two.
               if (classified.kind === 'unauthorized') {
-                orchestrator.sendToMachine(AUTH_MACHINE_ID, { type: "LOGOUT" });
+                return;
               }
               orchestrator.sendToMachine(UI_MACHINE_ID, {
                 type: "OPEN_SNACKBAR",
@@ -595,8 +618,11 @@ export const dataMachine = createMachine({
               })
             }),
             ({ event }) => {
-              if (event.error instanceof Error && (event.error.message.includes('401') || event.error.message.toLowerCase().includes('unauthorized'))) {
-                orchestrator.sendToMachine(AUTH_MACHINE_ID, { type: "LOGOUT" });
+              // FBUG-003 — the interceptor owns the 401 path end to end (refresh + retry, and
+              // SESSION_EXPIRED when it is terminal). Reporting it again here would stack a
+              // second snackbar and send a stray LOGOUT to an already-idle authMachine.
+              if (classifyApiError(event.error).kind === 'unauthorized') {
+                return;
               }
               const errorMessage = event.error instanceof Error ? event.error.message : "Error al cargar especialidades";
               orchestrator.sendToMachine(UI_MACHINE_ID, {
@@ -641,8 +667,11 @@ export const dataMachine = createMachine({
               })
             }),
             ({ event }) => {
-              if (event.error instanceof Error && (event.error.message.includes('401') || event.error.message.toLowerCase().includes('unauthorized'))) {
-                orchestrator.sendToMachine(AUTH_MACHINE_ID, { type: "LOGOUT" });
+              // FBUG-003 — the interceptor owns the 401 path end to end (refresh + retry, and
+              // SESSION_EXPIRED when it is terminal). Reporting it again here would stack a
+              // second snackbar and send a stray LOGOUT to an already-idle authMachine.
+              if (classifyApiError(event.error).kind === 'unauthorized') {
+                return;
               }
               const errorMessage = event.error instanceof Error ? event.error.message : "Error al cargar doctores pendientes";
               orchestrator.sendToMachine(UI_MACHINE_ID, {
@@ -687,8 +716,11 @@ export const dataMachine = createMachine({
               })
             }),
             ({ event }) => {
-              if (event.error instanceof Error && (event.error.message.includes('401') || event.error.message.toLowerCase().includes('unauthorized'))) {
-                orchestrator.sendToMachine(AUTH_MACHINE_ID, { type: "LOGOUT" });
+              // FBUG-003 — the interceptor owns the 401 path end to end (refresh + retry, and
+              // SESSION_EXPIRED when it is terminal). Reporting it again here would stack a
+              // second snackbar and send a stray LOGOUT to an already-idle authMachine.
+              if (classifyApiError(event.error).kind === 'unauthorized') {
+                return;
               }
               const errorMessage = event.error instanceof Error ? event.error.message : "Error al cargar estadísticas";
               orchestrator.sendToMachine(UI_MACHINE_ID, {
@@ -760,8 +792,11 @@ export const dataMachine = createMachine({
               });
             },
             ({ event }) => {
-              if (event.error instanceof Error && (event.error.message.includes('401') || event.error.message.toLowerCase().includes('unauthorized'))) {
-                orchestrator.sendToMachine(AUTH_MACHINE_ID, { type: "LOGOUT" });
+              // FBUG-003 — the interceptor owns the 401 path end to end (refresh + retry, and
+              // SESSION_EXPIRED when it is terminal). Reporting it again here would stack a
+              // second snackbar and send a stray LOGOUT to an already-idle authMachine.
+              if (classifyApiError(event.error).kind === 'unauthorized') {
+                return;
               }
               const errorMessage = event.error instanceof Error ? event.error.message : "Error al cargar turnos disponibles";
               orchestrator.sendToMachine(UI_MACHINE_ID, {
@@ -859,8 +894,11 @@ export const dataMachine = createMachine({
               })
             }),
             ({ event }) => {
-              if (event.error instanceof Error && (event.error.message.includes('401') || event.error.message.toLowerCase().includes('unauthorized'))) {
-                orchestrator.sendToMachine(AUTH_MACHINE_ID, { type: "LOGOUT" });
+              // FBUG-003 — the interceptor owns the 401 path end to end (refresh + retry, and
+              // SESSION_EXPIRED when it is terminal). Reporting it again here would stack a
+              // second snackbar and send a stray LOGOUT to an already-idle authMachine.
+              if (classifyApiError(event.error).kind === 'unauthorized') {
+                return;
               }
               const errorMessage = event.error instanceof Error ? event.error.message : "Error al cargar mis turnos";
               orchestrator.sendToMachine(UI_MACHINE_ID, {
@@ -908,8 +946,11 @@ export const dataMachine = createMachine({
               })
             }),
             ({ event }) => {
-              if (event.error instanceof Error && (event.error.message.includes('401') || event.error.message.toLowerCase().includes('unauthorized'))) {
-                orchestrator.sendToMachine(AUTH_MACHINE_ID, { type: "LOGOUT" });
+              // FBUG-003 — the interceptor owns the 401 path end to end (refresh + retry, and
+              // SESSION_EXPIRED when it is terminal). Reporting it again here would stack a
+              // second snackbar and send a stray LOGOUT to an already-idle authMachine.
+              if (classifyApiError(event.error).kind === 'unauthorized') {
+                return;
               }
               const errorMessage = event.error instanceof Error ? event.error.message : "Error al cargar pacientes del doctor";
               orchestrator.sendToMachine(UI_MACHINE_ID, {
@@ -957,8 +998,11 @@ export const dataMachine = createMachine({
               })
             }),
             ({ event }) => {
-              if (event.error instanceof Error && (event.error.message.includes('401') || event.error.message.toLowerCase().includes('unauthorized'))) {
-                orchestrator.sendToMachine(AUTH_MACHINE_ID, { type: "LOGOUT" });
+              // FBUG-003 — the interceptor owns the 401 path end to end (refresh + retry, and
+              // SESSION_EXPIRED when it is terminal). Reporting it again here would stack a
+              // second snackbar and send a stray LOGOUT to an already-idle authMachine.
+              if (classifyApiError(event.error).kind === 'unauthorized') {
+                return;
               }
               const errorMessage = event.error instanceof Error ? event.error.message : "Error al cargar disponibilidad del doctor";
               orchestrator.sendToMachine(UI_MACHINE_ID, {
@@ -1008,8 +1052,11 @@ export const dataMachine = createMachine({
               })
             }),
             ({ event }) => {
-              if (event.error instanceof Error && (event.error.message.includes('401') || event.error.message.toLowerCase().includes('unauthorized'))) {
-                orchestrator.sendToMachine(AUTH_MACHINE_ID, { type: "LOGOUT" });
+              // FBUG-003 — the interceptor owns the 401 path end to end (refresh + retry, and
+              // SESSION_EXPIRED when it is terminal). Reporting it again here would stack a
+              // second snackbar and send a stray LOGOUT to an already-idle authMachine.
+              if (classifyApiError(event.error).kind === 'unauthorized') {
+                return;
               }
               const errorMessage = event.error instanceof Error ? event.error.message : "Error al cargar solicitudes de modificación";
               orchestrator.sendToMachine(UI_MACHINE_ID, {
@@ -1061,8 +1108,11 @@ export const dataMachine = createMachine({
               })
             }),
             ({ event }) => {
-              if (event.error instanceof Error && (event.error.message.includes('401') || event.error.message.toLowerCase().includes('unauthorized'))) {
-                orchestrator.sendToMachine(AUTH_MACHINE_ID, { type: "LOGOUT" });
+              // FBUG-003 — the interceptor owns the 401 path end to end (refresh + retry, and
+              // SESSION_EXPIRED when it is terminal). Reporting it again here would stack a
+              // second snackbar and send a stray LOGOUT to an already-idle authMachine.
+              if (classifyApiError(event.error).kind === 'unauthorized') {
+                return;
               }
               const errorMessage = event.error instanceof Error ? event.error.message : "Error al cargar mis solicitudes de modificación";
               orchestrator.sendToMachine(UI_MACHINE_ID, {
@@ -1115,8 +1165,11 @@ export const dataMachine = createMachine({
               })
             }),
             ({ event }) => {
-              if (event.error instanceof Error && (event.error.message.includes('401') || event.error.message.toLowerCase().includes('unauthorized'))) {
-                orchestrator.sendToMachine(AUTH_MACHINE_ID, { type: "LOGOUT" });
+              // FBUG-003 — the interceptor owns the 401 path end to end (refresh + retry, and
+              // SESSION_EXPIRED when it is terminal). Reporting it again here would stack a
+              // second snackbar and send a stray LOGOUT to an already-idle authMachine.
+              if (classifyApiError(event.error).kind === 'unauthorized') {
+                return;
               }
               const errorMessage = event.error instanceof Error ? event.error.message : "Error al cargar ratings de administrador";
               orchestrator.sendToMachine(UI_MACHINE_ID, {
@@ -1196,8 +1249,11 @@ export const dataMachine = createMachine({
               }),
             }),
             ({ event }) => {
-              if (event.error instanceof Error && (event.error.message.includes('401') || event.error.message.toLowerCase().includes('unauthorized'))) {
-                orchestrator.sendToMachine(AUTH_MACHINE_ID, { type: 'LOGOUT' });
+              // FBUG-003 — the interceptor owns the 401 path end to end (refresh + retry, and
+              // SESSION_EXPIRED when it is terminal). Reporting it again here would stack a
+              // second snackbar and send a stray LOGOUT to an already-idle authMachine.
+              if (classifyApiError(event.error).kind === 'unauthorized') {
+                return;
               }
               const message = event.error instanceof Error ? event.error.message : 'Error al cargar conteos de subcategorías';
               orchestrator.sendToMachine(UI_MACHINE_ID, {
@@ -1257,8 +1313,11 @@ export const dataMachine = createMachine({
               })
             }),
             ({ event }) => {
-              if (event.error instanceof Error && (event.error.message.includes('401') || event.error.message.toLowerCase().includes('unauthorized'))) {
-                orchestrator.sendToMachine(AUTH_MACHINE_ID, { type: "LOGOUT" });
+              // FBUG-003 — the interceptor owns the 401 path end to end (refresh + retry, and
+              // SESSION_EXPIRED when it is terminal). Reporting it again here would stack a
+              // second snackbar and send a stray LOGOUT to an already-idle authMachine.
+              if (classifyApiError(event.error).kind === 'unauthorized') {
+                return;
               }
               const errorMessage = event.error instanceof Error ? event.error.message : "Error al cargar datos de badges del usuario";
               orchestrator.sendToMachine(UI_MACHINE_ID, {

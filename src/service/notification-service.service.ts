@@ -1,6 +1,8 @@
-import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
+// FBUG-003 — the ad-hoc `handleAuthError()` that dispatched HANDLE_AUTH_ERROR with a
+// never-invoked `retryAction` is gone: 401 → refresh → retry is now handled once,
+// centrally, by `authenticatedFetch` (config/api).
+import { API_CONFIG, authenticatedFetch, buildApiUrl } from '../../config/api';
 import { logger } from '../utils/logger';
-import { orchestrator } from '#/core/Orchestrator';
 
 export interface NotificationResponse {
   id: string;
@@ -11,30 +13,13 @@ export interface NotificationResponse {
   createdAt: string;
 }
 
-// Utility function to handle authentication errors centrally
-async function handleAuthError(error: Response, retryFn?: () => Promise<any>): Promise<void> {
-  if (error.status === 401) {
-    // Send auth error event to orchestrator
-    orchestrator.sendToMachine('auth', {
-      type: 'HANDLE_AUTH_ERROR',
-      error,
-      retryAction: retryFn
-    });
-  }
-}
-
 export class NotificationService {
   static async getNotifications(accessToken: string): Promise<NotificationResponse[]> {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_NOTIFICATIONS);
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
-
-      if (response.status === 401) {
-        await handleAuthError(response, () => this.getNotifications(accessToken));
-      }
 
       if (!response.ok) {
         const errorData: any = await response.json().catch(() => ({}));
@@ -56,14 +41,9 @@ export class NotificationService {
   static async deleteNotification(notificationId: string, accessToken: string): Promise<void> {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.DELETE_NOTIFICATION.replace('{notificationId}', notificationId));
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'DELETE',
       });
-
-      if (response.status === 401) {
-        await handleAuthError(response, () => this.deleteNotification(notificationId, accessToken));
-      }
 
       if (!response.ok) {
         const errorData: any = await response.json().catch(() => ({}));

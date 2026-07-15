@@ -1,9 +1,10 @@
 import React from "react";
 import {
-  Box, 
-  Typography, 
+  Box,
+  Typography,
   Container,
-  Avatar
+  Avatar,
+  Stack
 } from "@mui/material";
 import CalendarTodayIcon from "@mui/icons-material/CalendarToday";
 import PersonIcon from "@mui/icons-material/Person";
@@ -111,16 +112,16 @@ const PatientDashboard: React.FC = () => {
             />
           </Box>
 
-          <Box sx={{ mt: 3 }}>
+          <Stack spacing={3} sx={{ mt: 3 }}>
             <PatientFollowUpReminders />
-          </Box>
 
-          <BadgeShowcase
-            badges={badgeContext?.badges || []}
-            progress={badgeContext?.progress || []}
-            isLoading={badgeContext?.isLoadingBadges || badgeContext?.isLoadingProgress}
-            onViewAll={() => uiSend({ type: "NAVIGATE", to: "/patient/badges" })}
-          />
+            <BadgeShowcase
+              badges={badgeContext?.badges || []}
+              progress={badgeContext?.progress || []}
+              isLoading={badgeContext?.isLoadingBadges || badgeContext?.isLoadingProgress}
+              onViewAll={() => uiSend({ type: "NAVIGATE", to: "/patient/badges" })}
+            />
+          </Stack>
         </Container>
       </Box>
     </LocalizationProvider>

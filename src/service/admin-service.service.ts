@@ -1,4 +1,4 @@
-import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
+import { API_CONFIG, authenticatedFetch, buildApiUrl } from '../../config/api';
 import { logger } from '../utils/logger';
 import type {
     PendingDoctor,
@@ -14,8 +14,7 @@ export class AdminService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_PENDING_DOCTORS);
     
     try {
-      const response = await  fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 
@@ -41,8 +40,7 @@ export class AdminService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.APPROVE_DOCTOR.replace('{doctorId}', doctorId));
     
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'POST',
       });
 
@@ -68,8 +66,7 @@ export class AdminService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.REJECT_DOCTOR.replace('{doctorId}', doctorId));
     
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'POST',
       });
 
@@ -95,8 +92,7 @@ export class AdminService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_ADMIN_STATS);
     
     try {
-      const response = await  fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 
@@ -126,8 +122,7 @@ export class AdminService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_ADMIN_RATINGS);
     
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 
@@ -152,8 +147,7 @@ export class AdminService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_SPECIALTIES);
     
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 

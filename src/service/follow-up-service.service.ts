@@ -1,4 +1,4 @@
-import { API_CONFIG, buildApiUrl, getAuthenticatedFetchOptions } from '../../config/api';
+import { API_CONFIG, ApiError, authenticatedFetch, buildApiUrl } from '../../config/api';
 import { logger } from '../utils/logger';
 import type {
   FollowUpReminder,
@@ -24,18 +24,21 @@ export class FollowUpService {
     const request: CreateFollowUpReminderRequest = { monthsUntilControl: months };
 
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'POST',
         body: JSON.stringify(request),
       });
 
       if (!response.ok) {
         const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
-        throw new Error(
+        // FBUG-002 — throw a status-tagged ApiError so the machine can recognise the
+        // backend dup-guard's 409 (existsByMedicalHistory_IdAndDismissedFalse) and show
+        // its own copy, instead of relaying an opaque/blank backend message.
+        throw new ApiError(
           errorData?.message ||
             errorData?.error ||
             `Failed to create follow-up reminder! Status: ${response.status}`,
+          response.status,
         );
       }
 
@@ -53,8 +56,7 @@ export class FollowUpService {
     const url = buildApiUrl(API_CONFIG.ENDPOINTS.GET_FOLLOWUPS.replace('{doctorId}', doctorId));
 
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 
@@ -86,8 +88,7 @@ export class FollowUpService {
     );
 
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'PUT',
       });
 
@@ -114,8 +115,7 @@ export class FollowUpService {
     );
 
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 
@@ -144,8 +144,7 @@ export class FollowUpService {
     );
 
     try {
-      const response = await fetch(url, {
-        ...getAuthenticatedFetchOptions(accessToken),
+      const response = await authenticatedFetch(url, accessToken, {
         method: 'GET',
       });
 

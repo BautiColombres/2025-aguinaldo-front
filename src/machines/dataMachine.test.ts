@@ -422,7 +422,11 @@ describe('dataMachine', () => {
       ]);
     });
 
-    it('should handle reload pending doctors error with 401', async () => {
+    // FBUG-003 — the 401 path now belongs entirely to the `authenticatedFetch`
+    // interceptor (refresh + retry, then SESSION_EXPIRED if terminal). dataMachine
+    // must NOT re-report it: no stray LOGOUT to an already-idle authMachine and no
+    // second "sesión expirada" snackbar. It just returns to idle silently.
+    it('does not re-handle a 401 (interceptor owns it): no LOGOUT, no snackbar', async () => {
       actor = createActor(dataMachine, {});
       actor.start();
 
@@ -438,6 +442,7 @@ describe('dataMachine', () => {
       }, { timeout: 2000 });
 
       mockLoadPendingDoctors.mockClear();
+      mockOrchestrator.sendToMachine.mockClear();
       mockLoadPendingDoctors.mockRejectedValue(new Error('401 Unauthorized'));
 
       actor.send({ type: 'RELOAD_PENDING_DOCTORS' });
@@ -446,9 +451,13 @@ describe('dataMachine', () => {
         expect(actor.getSnapshot().value).toBe('idle');
       }, { timeout: 2000 });
 
-      expect(mockOrchestrator.sendToMachine).toHaveBeenCalledWith('auth', {
+      expect(mockOrchestrator.sendToMachine).not.toHaveBeenCalledWith('auth', {
         type: 'LOGOUT'
       });
+      expect(mockOrchestrator.sendToMachine).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ type: 'OPEN_SNACKBAR' })
+      );
     });
   });
 
@@ -761,8 +770,11 @@ describe('dataMachine', () => {
 
       actor.send({ type: 'LOAD_DOCTOR_PATIENTS' });
 
+      // Order-independent: with the FBUG-003 interceptor live, an unmocked badge
+      // fetch that 401s can interpose a refresh/SESSION_EXPIRED send, so a fixed
+      // nth-call index is brittle. The intent is simply "DATA_LOADED is emitted".
       await vi.waitFor(() => {
-        expect(mockOrchestrator.send).toHaveBeenNthCalledWith(2, {
+        expect(mockOrchestrator.send).toHaveBeenCalledWith({
           type: 'DATA_LOADED',
           doctorAvailability: expect.any(Array),
           userBadgeProgress: expect.any(Array),
@@ -1054,7 +1066,10 @@ describe('dataMachine', () => {
       });
     });
 
-    it('should logout on 401 error during data loading', async () => {
+    // FBUG-003 — a 401 during data loading is the interceptor's job now (refresh +
+    // retry, then SESSION_EXPIRED). dataMachine returns to idle without emitting its
+    // own auth handling, so the user never gets a duplicate expiry message.
+    it('does not logout/snackbar on a 401 during data loading (interceptor owns it)', async () => {
       actor = createActor(dataMachine, {});
       actor.start();
 
@@ -1070,15 +1085,18 @@ describe('dataMachine', () => {
       }, { timeout: 2000 });
 
       mockLoadDoctors.mockClear();
+      mockOrchestrator.sendToMachine.mockClear();
       mockLoadDoctors.mockRejectedValue(new Error('401 unauthorized'));
 
       actor.send({ type: 'RELOAD_DOCTORS' });
 
       await vi.waitFor(() => {
-        expect(mockOrchestrator.sendToMachine).toHaveBeenCalledWith('auth', {
-          type: 'LOGOUT'
-        });
+        expect(actor.getSnapshot().value).toBe('idle');
       }, { timeout: 2000 });
+
+      expect(mockOrchestrator.sendToMachine).not.toHaveBeenCalledWith('auth', {
+        type: 'LOGOUT'
+      });
     });
 
     it('should handle non-Error exceptions', async () => {

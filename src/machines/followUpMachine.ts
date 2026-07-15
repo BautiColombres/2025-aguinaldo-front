@@ -1,11 +1,36 @@
 import { createMachine, assign, fromPromise } from 'xstate';
 import { FollowUpService } from '../service/follow-up-service.service';
+import { isConflictError } from '../../config/api';
 import { orchestrator } from '../core/Orchestrator';
 import { UI_MACHINE_ID } from './uiMachine';
 import type { FollowUpReminder, FollowUpMonths, DueForFollowUp } from '../models/FollowUpReminder';
 
 export const FOLLOW_UP_MACHINE_ID = 'followUp';
+
+// FBUG-002 — the backend rejects a second active reminder for the same medical
+// history with a 409. `FollowUpService.createReminder` tags that rejection with
+// `status: 409` (see `ApiError`), so we can show this specific copy without
+// depending on the backend's wording (which reached the UI blank/opaque).
+export const DUPLICATE_FOLLOWUP_MESSAGE = 'Ya existe un recordatorio activo para esta consulta';
+export const CREATE_FOLLOWUP_ERROR_MESSAGE = 'Error al crear el recordatorio de control';
+
+const createErrorMessage = (error: unknown): string => {
+  if (isConflictError(error)) {
+    return DUPLICATE_FOLLOWUP_MESSAGE;
+  }
+  if (error instanceof Error) {
+    return error.message || CREATE_FOLLOWUP_ERROR_MESSAGE;
+  }
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    return String((error as { message?: string }).message) || CREATE_FOLLOWUP_ERROR_MESSAGE;
+  }
+  return CREATE_FOLLOWUP_ERROR_MESSAGE;
+};
+
 export const FOLLOW_UP_MACHINE_EVENT_TYPES = [
+  // FBUG-003 / FSEC — silent token refresh + credential wipe on logout & expiry.
+  'TOKEN_REFRESHED',
+  'CLEAR_ACCESS_TOKEN',
   'CREATE_FOLLOWUP',
   'LOAD_DUE_FOLLOWUPS',
   'LOAD_DUE_FOR_FOLLOWUP',
@@ -29,6 +54,8 @@ interface FollowUpMachineContext {
 }
 
 export type FollowUpMachineEvent =
+  | { type: 'TOKEN_REFRESHED'; accessToken: string }
+  | { type: 'CLEAR_ACCESS_TOKEN' }
   | { type: 'CREATE_FOLLOWUP'; historyId: string; months: FollowUpMonths; accessToken: string; doctorId: string }
   | { type: 'LOAD_DUE_FOLLOWUPS'; doctorId: string; accessToken: string }
   | { type: 'LOAD_DUE_FOR_FOLLOWUP'; doctorId: string; accessToken: string }
@@ -57,6 +84,26 @@ export const followUpMachine = createMachine(
       currentMonths: null,
       currentReminderId: null,
     } as FollowUpMachineContext,
+    on: {
+      // FBUG-003 — the interceptor silently refreshed the access token (401 -> refresh
+      // -> retry). Adopt it IN PLACE: pure assign, no target, no refetch. Do NOT reuse
+      // SET_AUTH here — that means "a session just started" and re-bootstraps machines.
+      TOKEN_REFRESHED: {
+        actions: assign({
+          accessToken: ({ event }) => event.accessToken,
+        }),
+      },
+      // FSEC — logout / session expiry must wipe the in-memory credentials from EVERY
+      // machine. A bearer left behind in context is a live, usable credential (the
+      // retry-401 path can even leave a freshly minted one here).
+      CLEAR_ACCESS_TOKEN: {
+        actions: assign({
+          accessToken: null,
+          doctorId: null,
+          patientId: null,
+        }),
+      },
+    },
     states: {
       idle: {
         on: {
@@ -135,20 +182,13 @@ export const followUpMachine = createMachine(
             target: 'idle',
             actions: [
               assign({
-                error: ({ event }) => {
-                  const err = event.error as Error | { message?: string } | unknown;
-                  return err instanceof Error
-                    ? err.message
-                    : typeof err === 'object' && err !== null && 'message' in err
-                      ? String((err as { message?: string }).message)
-                      : 'Error al crear el recordatorio de control';
-                },
+                error: ({ event }) => createErrorMessage(event.error),
               }),
-              ({ context }) => {
+              ({ context, event }) => {
                 orchestrator.sendToMachine(UI_MACHINE_ID, {
                   type: 'OPEN_SNACKBAR',
-                  message: context.error || 'Error al crear el recordatorio de control',
-                  severity: 'error',
+                  message: context.error || CREATE_FOLLOWUP_ERROR_MESSAGE,
+                  severity: isConflictError(event.error) ? 'warning' : 'error',
                 });
               },
             ],

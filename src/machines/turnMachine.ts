@@ -11,6 +11,9 @@ import { TurnModifyService } from "#/service/turn-modify-service.service";
 
 export const TURN_MACHINE_ID = "turn";
 export const TURN_MACHINE_EVENT_TYPES = [
+  // FBUG-003 / FSEC — silent token refresh + credential wipe on logout & expiry.
+  'TOKEN_REFRESHED',
+  'CLEAR_ACCESS_TOKEN',
   "UPDATE_FORM",
   "NEXT",
   "BACK",
@@ -80,6 +83,8 @@ export interface TurnMachineContext {
 }
 
 export type TurnMachineEvent =
+  | { type: 'TOKEN_REFRESHED'; accessToken: string }
+  | { type: 'CLEAR_ACCESS_TOKEN' }
   | { type: "UPDATE_FORM"; path: string[]; value: any }
   | { type: "NEXT" }
   | { type: "BACK" }
@@ -928,6 +933,22 @@ export const turnMachine = createMachine({
   },
   
   on: {
+    // FBUG-003 — the interceptor silently refreshed the access token (401 -> refresh
+    // -> retry). Adopt it IN PLACE: pure assign, no target, no refetch. Do NOT reuse
+    // SET_AUTH here — that means "a session just started" and re-bootstraps machines.
+    TOKEN_REFRESHED: {
+      actions: assign({
+        accessToken: ({ event }) => event.accessToken,
+      }),
+    },
+    // FSEC — logout / session expiry must wipe the in-memory credentials from EVERY
+    // machine. A bearer left behind in context is a live, usable credential (the
+    // retry-401 path can even leave a freshly minted one here).
+    CLEAR_ACCESS_TOKEN: {
+      actions: assign({
+        accessToken: null,
+      }),
+    },
     CANCEL_TURN: {
       target: ".dataManagement.cancellingTurn",
       actions: assign({

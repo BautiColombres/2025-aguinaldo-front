@@ -9,6 +9,34 @@ import type { TurnModifyRequest } from '../models/TurnModifyRequest';
 
 // Mock the API config
 vi.mock('../../config/api', () => ({
+  // FBUG-003 — services now issue authenticated requests through the centralized
+  // `authenticatedFetch` interceptor (401 -> refresh -> retry, covered in config/api.test.ts).
+  // Here it is stubbed to a plain fetch so these suites keep asserting the request shape.
+  authenticatedFetch: vi.fn(
+    (
+      url: string,
+      token: string,
+      init: Omit<RequestInit, 'headers'> & {
+        headers?: Record<string, string>;
+        omitJsonContentType?: boolean;
+      } = {},
+    ) => {
+    const { omitJsonContentType, headers, ...rest } = init;
+    return fetch(url, {
+      ...rest,
+      headers: {
+        ...(omitJsonContentType ? {} : { 'Content-Type': 'application/json' }),
+        ...headers,
+        Authorization: `Bearer ${token}`,
+      },
+      credentials: 'include',
+      signal: AbortSignal.timeout(10000),
+    });
+  }),
+  getDefaultFetchOptions: vi.fn(() => ({
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+  })),
   API_CONFIG: {
     BASE_URL: 'http://localhost:8080',
     ENDPOINTS: {
@@ -95,7 +123,7 @@ describe('TurnService', () => {
       expect(result).toEqual(mockModifyRequests);
     });
 
-    it('should handle 401 auth error and send to orchestrator', async () => {
+    it('surfaces a 401 and no longer dispatches the dead HANDLE_AUTH_ERROR event', async () => {
       const authErrorResponse = { message: 'Unauthorized' };
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -106,12 +134,13 @@ describe('TurnService', () => {
       await expect(TurnService.getMyModifyRequests(accessToken))
         .rejects.toThrow('Unauthorized');
 
+      // FBUG-003 — the 401 -> refresh -> retry cycle is owned by `authenticatedFetch`
+      // (config/api); services no longer hand-roll it.
       const { orchestrator } = await import('#/core/Orchestrator');
-      expect(orchestrator.sendToMachine).toHaveBeenCalledWith('auth', {
-        type: 'HANDLE_AUTH_ERROR',
-        error: expect.objectContaining({ status: 401 }),
-        retryAction: expect.any(Function)
-      });
+      expect(orchestrator.sendToMachine).not.toHaveBeenCalledWith(
+        'auth',
+        expect.objectContaining({ type: 'HANDLE_AUTH_ERROR' })
+      );
     });
 
     it('should throw error when fetch fails with non-401 error', async () => {
@@ -706,7 +735,7 @@ describe('TurnService', () => {
       expect(result).toEqual(mockApproveResponse);
     });
 
-    it('should handle 401 auth error and send to orchestrator', async () => {
+    it('surfaces a 401 and no longer dispatches the dead HANDLE_AUTH_ERROR event', async () => {
       const authErrorResponse = { message: 'Unauthorized' };
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -717,12 +746,13 @@ describe('TurnService', () => {
       await expect(TurnService.approveModifyRequest(requestId, accessToken))
         .rejects.toThrow('Unauthorized');
 
+      // FBUG-003 — the 401 -> refresh -> retry cycle is owned by `authenticatedFetch`
+      // (config/api); services no longer hand-roll it.
       const { orchestrator } = await import('#/core/Orchestrator');
-      expect(orchestrator.sendToMachine).toHaveBeenCalledWith('auth', {
-        type: 'HANDLE_AUTH_ERROR',
-        error: expect.objectContaining({ status: 401 }),
-        retryAction: expect.any(Function)
-      });
+      expect(orchestrator.sendToMachine).not.toHaveBeenCalledWith(
+        'auth',
+        expect.objectContaining({ type: 'HANDLE_AUTH_ERROR' })
+      );
     });
 
     it('should throw error when approve fails with non-401 error', async () => {
@@ -772,7 +802,7 @@ describe('TurnService', () => {
       expect(result).toEqual(mockRejectResponse);
     });
 
-    it('should handle 401 auth error and send to orchestrator', async () => {
+    it('surfaces a 401 and no longer dispatches the dead HANDLE_AUTH_ERROR event', async () => {
       const authErrorResponse = { message: 'Unauthorized' };
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -783,12 +813,13 @@ describe('TurnService', () => {
       await expect(TurnService.rejectModifyRequest(requestId, accessToken))
         .rejects.toThrow('Unauthorized');
 
+      // FBUG-003 — the 401 -> refresh -> retry cycle is owned by `authenticatedFetch`
+      // (config/api); services no longer hand-roll it.
       const { orchestrator } = await import('#/core/Orchestrator');
-      expect(orchestrator.sendToMachine).toHaveBeenCalledWith('auth', {
-        type: 'HANDLE_AUTH_ERROR',
-        error: expect.objectContaining({ status: 401 }),
-        retryAction: expect.any(Function)
-      });
+      expect(orchestrator.sendToMachine).not.toHaveBeenCalledWith(
+        'auth',
+        expect.objectContaining({ type: 'HANDLE_AUTH_ERROR' })
+      );
     });
 
     it('should throw error when reject fails with non-401 error', async () => {
@@ -845,7 +876,7 @@ describe('TurnService', () => {
       expect(result).toEqual(mockRatingResponse);
     });
 
-    it('should handle 401 auth error and send to orchestrator', async () => {
+    it('surfaces a 401 and no longer dispatches the dead HANDLE_AUTH_ERROR event', async () => {
       const authErrorResponse = { message: 'Unauthorized' };
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -856,12 +887,13 @@ describe('TurnService', () => {
       await expect(TurnService.createRating(turnId, mockRatingData, accessToken))
         .rejects.toThrow('Unauthorized');
 
+      // FBUG-003 — the 401 -> refresh -> retry cycle is owned by `authenticatedFetch`
+      // (config/api); services no longer hand-roll it.
       const { orchestrator } = await import('#/core/Orchestrator');
-      expect(orchestrator.sendToMachine).toHaveBeenCalledWith('auth', {
-        type: 'HANDLE_AUTH_ERROR',
-        error: expect.objectContaining({ status: 401 }),
-        retryAction: expect.any(Function)
-      });
+      expect(orchestrator.sendToMachine).not.toHaveBeenCalledWith(
+        'auth',
+        expect.objectContaining({ type: 'HANDLE_AUTH_ERROR' })
+      );
     });
 
     it('should throw error when create rating fails with non-401 error', async () => {
@@ -1018,7 +1050,7 @@ describe('TurnService', () => {
       expect(result).toEqual(mockCounts);
     });
 
-    it('should handle 401 auth error and send to orchestrator', async () => {
+    it('surfaces a 401 and no longer dispatches the dead HANDLE_AUTH_ERROR event', async () => {
       const authErrorResponse = { message: 'Unauthorized' };
       mockFetch.mockResolvedValueOnce({
         ok: false,
@@ -1029,12 +1061,13 @@ describe('TurnService', () => {
       await expect(TurnService.getRatedSubcategoryCounts(ratedId, accessToken, raterRole))
         .rejects.toThrow('Unauthorized');
 
+      // FBUG-003 — the 401 -> refresh -> retry cycle is owned by `authenticatedFetch`
+      // (config/api); services no longer hand-roll it.
       const { orchestrator } = await import('#/core/Orchestrator');
-      expect(orchestrator.sendToMachine).toHaveBeenCalledWith('auth', {
-        type: 'HANDLE_AUTH_ERROR',
-        error: expect.objectContaining({ status: 401 }),
-        retryAction: expect.any(Function)
-      });
+      expect(orchestrator.sendToMachine).not.toHaveBeenCalledWith(
+        'auth',
+        expect.objectContaining({ type: 'HANDLE_AUTH_ERROR' })
+      );
     });
 
     it('should throw error when fetch fails with non-401 error', async () => {

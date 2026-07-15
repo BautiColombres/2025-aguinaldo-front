@@ -209,10 +209,66 @@ describe('authMachine', () => {
       expect(actor.getSnapshot().value).toBe('loggingOut');
     });
 
-    it('should handle HANDLE_AUTH_ERROR event', () => {
+    // FBUG-003 — the 401 → refresh → retry cycle now lives in the centralized
+    // `authenticatedFetch` interceptor (config/api). The machine no longer owns a
+    // `refreshingToken` state nor the dead `HANDLE_AUTH_ERROR` + `retryAction`
+    // plumbing; it only reacts to what the interceptor broadcasts.
+    it('no longer exposes the HANDLE_AUTH_ERROR / refreshingToken flow', () => {
       actor.send({ type: 'HANDLE_AUTH_ERROR', error: new Error('Token expired') });
 
-      expect(actor.getSnapshot().value).toBe('refreshingToken');
+      expect(actor.getSnapshot().value).toBe('authenticated');
+      expect(Object.keys(authMachine.states)).not.toContain('refreshingToken');
+    });
+
+    it('TOKEN_REFRESHED from the interceptor refreshes the in-memory access token', () => {
+      actor.send({
+        type: 'TOKEN_REFRESHED',
+        accessToken: 'refreshed-access-token',
+      });
+
+      const { authResponse, isAuthenticated } = actor.getSnapshot().context;
+      expect(actor.getSnapshot().value).toBe('authenticated');
+      expect(isAuthenticated).toBe(true);
+      expect((authResponse as Record<string, unknown>).accessToken).toBe('refreshed-access-token');
+      // the rest of the session payload is preserved
+      expect((authResponse as Record<string, unknown>).id).toBe('1');
+      expect((authResponse as Record<string, unknown>).role).toBe('PATIENT');
+    });
+
+    it('SESSION_EXPIRED clears the session, notifies and navigates to login', async () => {
+      actor.send({ type: 'SESSION_EXPIRED' });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(actor.getSnapshot().context.isAuthenticated).toBe(false);
+      expect(actor.getSnapshot().context.authResponse).toBe(null);
+      expect(mockOrchestrator.send).toHaveBeenCalledWith({ type: 'CLEAR_ACCESS_TOKEN' });
+      expect(mockOrchestrator.send).toHaveBeenCalledWith({ type: 'NAVIGATE', to: '/' });
+      expect(mockOrchestrator.send).toHaveBeenCalledWith({
+        type: 'OPEN_SNACKBAR',
+        message: 'Sesión expirada. Por favor, vuelve a iniciar sesión.',
+        severity: 'error',
+      });
+    });
+
+    it('ignores a duplicate SESSION_EXPIRED once the session is already cleared', async () => {
+      actor.send({ type: 'SESSION_EXPIRED' });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      const snackbarCalls = () =>
+        mockOrchestrator.send.mock.calls.filter(
+          ([event]: [{ type?: string }]) => event?.type === 'OPEN_SNACKBAR',
+        ).length;
+      const before = snackbarCalls();
+
+      actor.send({ type: 'SESSION_EXPIRED' });
+
+      expect(snackbarCalls()).toBe(before);
     });
   });
 
@@ -461,17 +517,11 @@ describe('authMachine', () => {
       expect(vi.mocked(AuthService.saveAuthData)).not.toHaveBeenCalled();
     });
 
-    it('refreshingToken calls cookie-based AuthService.refreshToken() with no argument and does not persist', async () => {
+    it('does not persist the token refreshed by the interceptor (TOKEN_REFRESHED stays in memory)', async () => {
       vi.mocked(checkStoredAuth).mockResolvedValue({
         authData: { accessToken: 'token123', id: '1', role: 'PATIENT', status: 'ACTIVE' },
         isAuthenticated: true
       });
-      vi.mocked(AuthService.refreshToken).mockResolvedValue({
-        id: '1',
-        role: 'PATIENT',
-        status: 'ACTIVE',
-        accessToken: 'new-access-token'
-      } as any);
 
       actor = createActor(authMachine);
       actor.start();
@@ -480,13 +530,14 @@ describe('authMachine', () => {
         expect(actor.getSnapshot().value).toBe('authenticated');
       });
 
-      actor.send({ type: 'HANDLE_AUTH_ERROR', error: new Error('Token expired') });
-
-      await vi.waitFor(() => {
-        expect(actor.getSnapshot().value).toBe('authenticated');
+      actor.send({
+        type: 'TOKEN_REFRESHED',
+        accessToken: 'new-access-token',
       });
 
-      expect(vi.mocked(AuthService.refreshToken)).toHaveBeenCalledWith();
+      expect((actor.getSnapshot().context.authResponse as Record<string, unknown>).accessToken).toBe(
+        'new-access-token',
+      );
       expect(vi.mocked(AuthService.saveAuthData)).not.toHaveBeenCalled();
     });
   });

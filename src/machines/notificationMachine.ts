@@ -3,6 +3,8 @@ import { NotificationService, NotificationResponse } from '../service/notificati
 
 export const NOTIFICATION_MACHINE_ID = "notification";
 export const NOTIFICATION_MACHINE_EVENT_TYPES = [
+  // FBUG-003 / FSEC — silent token refresh + credential wipe on logout & expiry.
+  'TOKEN_REFRESHED',
   "SET_AUTH",
   "CLEAR_ACCESS_TOKEN",
   "LOAD_NOTIFICATIONS",
@@ -22,6 +24,7 @@ export interface NotificationMachineContext {
 }
 
 export type NotificationMachineEvent =
+  | { type: 'TOKEN_REFRESHED'; accessToken: string }
   | { type: "SET_AUTH"; accessToken: string }
   | { type: "CLEAR_ACCESS_TOKEN" }
   | { type: "LOAD_NOTIFICATIONS"; accessToken?: string }
@@ -176,6 +179,14 @@ export const notificationMachine = createMachine({
     },
   },
   on: {
+    // FBUG-003 — the interceptor silently refreshed the access token (401 -> refresh
+    // -> retry). Adopt it IN PLACE: pure assign, no target, no refetch. Do NOT reuse
+    // SET_AUTH here — that means "a session just started" and re-bootstraps machines.
+    TOKEN_REFRESHED: {
+      actions: assign({
+        accessToken: ({ event }) => event.accessToken,
+      }),
+    },
     SET_AUTH: {
       actions: assign({
         accessToken: ({ event }) => event.accessToken,
