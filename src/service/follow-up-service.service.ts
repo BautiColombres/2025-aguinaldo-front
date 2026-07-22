@@ -163,4 +163,36 @@ export class FollowUpService {
       throw error;
     }
   }
+
+  static async getDoctorPatientReminders(
+    accessToken: string,
+    doctorId: string,
+    patientId: string,
+  ): Promise<FollowUpReminder[]> {
+    const url = buildApiUrl(
+      API_CONFIG.ENDPOINTS.GET_DOCTOR_PATIENT_FOLLOWUPS
+        .replace('{doctorId}', doctorId)
+        .replace('{patientId}', patientId),
+    );
+
+    try {
+      const response = await authenticatedFetch(url, accessToken, {
+        method: 'GET',
+      });
+
+      if (!response.ok) {
+        const errorData: ApiErrorResponse = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData?.message ||
+            errorData?.error ||
+            `Failed to get doctor patient follow-up reminders! Status: ${response.status}`,
+        );
+      }
+
+      return await response.json();
+    } catch (error) {
+      logger.error('Failed to get doctor patient follow-up reminders:', error);
+      throw error;
+    }
+  }
 }

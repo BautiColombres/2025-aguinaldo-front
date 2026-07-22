@@ -36,6 +36,7 @@ export const FOLLOW_UP_MACHINE_EVENT_TYPES = [
   'LOAD_DUE_FOR_FOLLOWUP',
   'DISMISS_FOLLOWUP',
   'LOAD_PATIENT_FOLLOWUPS',
+  'LOAD_DOCTOR_PATIENT_FOLLOWUPS',
   'CLEAR_ERROR',
 ];
 
@@ -43,6 +44,10 @@ interface FollowUpMachineContext {
   dueReminders: FollowUpReminder[];
   dueForFollowUp: DueForFollowUp[];
   patientReminders: FollowUpReminder[];
+  // Doctor-scoped, non-dismissed reminders the CURRENT doctor created for the
+  // patient being viewed. Kept separate from `patientReminders` (patient-role) so
+  // neither loader clobbers the other's list.
+  doctorPatientReminders: FollowUpReminder[];
   isLoading: boolean;
   error: string | null;
   accessToken: string | null;
@@ -61,6 +66,7 @@ export type FollowUpMachineEvent =
   | { type: 'LOAD_DUE_FOR_FOLLOWUP'; doctorId: string; accessToken: string }
   | { type: 'DISMISS_FOLLOWUP'; reminderId: string; doctorId: string; accessToken: string }
   | { type: 'LOAD_PATIENT_FOLLOWUPS'; patientId: string; accessToken: string }
+  | { type: 'LOAD_DOCTOR_PATIENT_FOLLOWUPS'; doctorId: string; patientId: string; accessToken: string }
   | { type: 'CLEAR_ERROR' };
 
 export const followUpMachine = createMachine(
@@ -75,6 +81,7 @@ export const followUpMachine = createMachine(
       dueReminders: [],
       dueForFollowUp: [],
       patientReminders: [],
+      doctorPatientReminders: [],
       isLoading: false,
       error: null,
       accessToken: null,
@@ -145,6 +152,15 @@ export const followUpMachine = createMachine(
           LOAD_PATIENT_FOLLOWUPS: {
             target: 'loadingPatientReminders',
             actions: assign({
+              patientId: ({ event }) => event.patientId,
+              accessToken: ({ event }) => event.accessToken,
+              error: () => null,
+            }),
+          },
+          LOAD_DOCTOR_PATIENT_FOLLOWUPS: {
+            target: 'loadingDoctorPatientReminders',
+            actions: assign({
+              doctorId: ({ event }) => event.doctorId,
               patientId: ({ event }) => event.patientId,
               accessToken: ({ event }) => event.accessToken,
               error: () => null,
@@ -298,6 +314,30 @@ export const followUpMachine = createMachine(
           },
         },
       },
+      loadingDoctorPatientReminders: {
+        entry: assign({ isLoading: () => true }),
+        exit: assign({ isLoading: () => false }),
+        invoke: {
+          src: 'getDoctorPatientReminders',
+          input: ({ context }) => ({
+            accessToken: context.accessToken!,
+            doctorId: context.doctorId!,
+            patientId: context.patientId!,
+          }),
+          onDone: {
+            target: 'idle',
+            actions: assign({
+              doctorPatientReminders: ({ event }) => event.output,
+            }),
+          },
+          onError: {
+            target: 'idle',
+            actions: assign({
+              error: ({ event }) => `Error al cargar recordatorios: ${event.error}`,
+            }),
+          },
+        },
+      },
     },
   },
   {
@@ -323,6 +363,10 @@ export const followUpMachine = createMachine(
       getPatientReminders: fromPromise(
         async ({ input }: { input: { accessToken: string; patientId: string } }) =>
           FollowUpService.getPatientReminders(input.accessToken, input.patientId),
+      ),
+      getDoctorPatientReminders: fromPromise(
+        async ({ input }: { input: { accessToken: string; doctorId: string; patientId: string } }) =>
+          FollowUpService.getDoctorPatientReminders(input.accessToken, input.doctorId, input.patientId),
       ),
     },
   },

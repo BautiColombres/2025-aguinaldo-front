@@ -102,6 +102,7 @@ export const API_CONFIG = {
     GET_FOLLOWUPS: '/api/doctors/{doctorId}/followups',
     DISMISS_FOLLOWUP: '/api/doctors/{doctorId}/followups/{reminderId}/dismiss',
     GET_PATIENT_FOLLOWUPS: '/api/patients/{patientId}/followups',
+    GET_DOCTOR_PATIENT_FOLLOWUPS: '/api/doctors/{doctorId}/patients/{patientId}/followups',
     GET_DUE_FOR_FOLLOWUP: '/api/doctors/{doctorId}/patients/due-for-followup',
 
     GET_PROFILE: '/api/profile/{profileId}',

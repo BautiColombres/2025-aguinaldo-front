@@ -6,6 +6,7 @@ import { useMachines } from '#/providers/MachineProvider';
 import { useDataMachine } from '#/providers/DataProvider';
 import { useAuthMachine } from '#/providers/AuthProvider';
 import type { MedicalHistory, TagFrequency } from '#/models/MedicalHistory';
+import type { FollowUpReminder } from '#/models/FollowUpReminder';
 
 vi.mock('#/providers/MachineProvider', () => ({
   useMachines: vi.fn(),
@@ -43,7 +44,23 @@ type SetupArgs = {
   selectedHistory?: Partial<MedicalHistory> | null;
   editingContent?: string;
   myTurns?: any[];
+  doctorPatientReminders?: FollowUpReminder[];
 };
+
+const reminder = (over: Partial<FollowUpReminder> = {}): FollowUpReminder => ({
+  id: 'reminder-1',
+  patientId: 'patient-1',
+  patientName: 'John',
+  patientSurname: 'Doe',
+  doctorId: 'doctor-1',
+  historyId: 'h1',
+  turnId: 'turn-1',
+  monthsUntilControl: 3,
+  scheduledFor: '2024-08-10',
+  dismissed: false,
+  createdAt: '2024-05-10T10:00:00Z',
+  ...over,
+});
 
 const setup = ({
   medicalHistories = [],
@@ -51,11 +68,23 @@ const setup = ({
   selectedHistory = null,
   editingContent = '',
   myTurns = [turn('turn-1')],
+  doctorPatientReminders = [],
 }: SetupArgs = {}) => {
   const medicalHistorySend = vi.fn();
   const doctorSend = vi.fn();
   const dataSend = vi.fn();
   const followUpSend = vi.fn();
+
+  const followUpState = {
+    context: {
+      dueReminders: [],
+      patientReminders: [],
+      doctorPatientReminders,
+      isLoading: false,
+      error: null,
+    },
+    matches: vi.fn((_state: string) => false),
+  };
 
   (useMachines as unknown as Mock).mockReturnValue({
     doctorState: {
@@ -77,14 +106,7 @@ const setup = ({
       },
     },
     medicalHistorySend,
-    followUpState: {
-      context: {
-        dueReminders: [],
-        patientReminders: [],
-        isLoading: false,
-        error: null,
-      },
-    },
+    followUpState,
     followUpSend,
   });
 
@@ -106,8 +128,13 @@ const setup = ({
     },
   });
 
-  render(<PatientDetails />);
-  return { medicalHistorySend, followUpSend };
+  const view = render(<PatientDetails />);
+  return {
+    medicalHistorySend,
+    followUpSend,
+    followUpState,
+    rerender: () => view.rerender(<PatientDetails />),
+  };
 };
 
 const baseHistory = (over: Partial<MedicalHistory>): MedicalHistory => ({
@@ -285,6 +312,15 @@ describe('PatientDetails — frequent tags cloud (F1-F5)', () => {
     expect(within(section).queryAllByTestId('frequent-tag-chip')).toHaveLength(0);
     expect(within(section).getByText(/No hay etiquetas frecuentes/i)).toBeInTheDocument();
   });
+
+  it('renders the tags card with normalized padding matching the cards below (no extra pb:4)', () => {
+    setup({ frequentTags: [{ tag: 'diabetes', count: 3 }] });
+
+    const section = screen.getByTestId('frequent-tags-section');
+    // p:3 => 24px on every side; the old override was pb:4 (32px) which misaligned it.
+    expect(section).toHaveStyle({ paddingBottom: '24px' });
+    expect(section).toHaveStyle({ paddingTop: '24px' });
+  });
 });
 
 describe('PatientDetails — follow-up reminder ("Control en X meses") (F2-F4)', () => {
@@ -339,6 +375,75 @@ describe('PatientDetails — follow-up reminder ("Control en X meses") (F2-F4)',
         type: 'CREATE_FOLLOWUP',
         historyId: 'h1',
         months: 6,
+      }),
+    );
+  });
+
+  it('loads the doctor-scoped reminders on mount', () => {
+    const { followUpSend } = setup({
+      medicalHistories: [baseHistory({ id: 'h1', turnId: 'turn-1' })],
+    });
+
+    expect(followUpSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'LOAD_DOCTOR_PATIENT_FOLLOWUPS',
+        doctorId: 'doctor-1',
+        patientId: 'patient-1',
+        accessToken: 'token-123',
+      }),
+    );
+  });
+
+  it('hides the create controls and shows the scheduled date when a reminder already exists for the turn history', () => {
+    setup({
+      medicalHistories: [baseHistory({ id: 'h1', turnId: 'turn-1' })],
+      doctorPatientReminders: [reminder({ historyId: 'h1', scheduledFor: '2024-08-10' })],
+    });
+
+    expect(screen.queryByRole('button', { name: /Crear recordatorio/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^3 meses$/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Control programado para 10\/08\/2024/i)).toBeInTheDocument();
+  });
+
+  it('renders the create controls when no reminder exists for the turn history', () => {
+    setup({
+      medicalHistories: [baseHistory({ id: 'h1', turnId: 'turn-1' })],
+      doctorPatientReminders: [reminder({ historyId: 'other-history' })],
+    });
+
+    expect(screen.getByRole('button', { name: /Crear recordatorio/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Control programado para/i)).not.toBeInTheDocument();
+  });
+
+  it('ignores a dismissed reminder and keeps the create controls available', () => {
+    setup({
+      medicalHistories: [baseHistory({ id: 'h1', turnId: 'turn-1' })],
+      doctorPatientReminders: [reminder({ historyId: 'h1', dismissed: true })],
+    });
+
+    expect(screen.getByRole('button', { name: /Crear recordatorio/i })).toBeInTheDocument();
+  });
+
+  it('re-dispatches the doctor-scoped loader after a create completes successfully', () => {
+    const { followUpSend, followUpState, rerender } = setup({
+      medicalHistories: [baseHistory({ id: 'h1', turnId: 'turn-1' })],
+    });
+
+    // Simulate the machine entering the `creating` state after the click.
+    followUpState.matches.mockImplementation((state: string) => state === 'creating');
+    rerender();
+
+    // Machine returns to idle with no error => a successful create.
+    followUpSend.mockClear();
+    followUpState.matches.mockImplementation((_state: string) => false);
+    rerender();
+
+    expect(followUpSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'LOAD_DOCTOR_PATIENT_FOLLOWUPS',
+        doctorId: 'doctor-1',
+        patientId: 'patient-1',
+        accessToken: 'token-123',
       }),
     );
   });
