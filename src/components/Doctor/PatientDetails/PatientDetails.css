@@ -26,6 +26,12 @@
   padding: 0 !important;
 }
 
+.patient-details-tags {
+  max-width: 1200px !important;
+  margin: 0 auto !important;
+  padding: 0 24px 32px 24px !important;
+}
+
 .patient-details-content {
   max-width: 1200px !important;
   margin: 0 auto !important;

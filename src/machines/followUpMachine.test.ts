@@ -16,6 +16,7 @@ vi.mock('../service/follow-up-service.service', () => ({
     getDueReminders: vi.fn(),
     dismissReminder: vi.fn(),
     getPatientReminders: vi.fn(),
+    getDoctorPatientReminders: vi.fn(),
     getDueForFollowUp: vi.fn(),
   },
 }));
@@ -68,6 +69,7 @@ describe('followUpMachine', () => {
     expect(actor.getSnapshot().context.dueReminders).toEqual([]);
     expect(actor.getSnapshot().context.dueForFollowUp).toEqual([]);
     expect(actor.getSnapshot().context.patientReminders).toEqual([]);
+    expect(actor.getSnapshot().context.doctorPatientReminders).toEqual([]);
     expect(actor.getSnapshot().context.isLoading).toBe(false);
     expect(actor.getSnapshot().context.error).toBe(null);
   });
@@ -291,6 +293,49 @@ describe('followUpMachine', () => {
 
       expect(actor.getSnapshot().context.error).toBeTruthy();
       expect(actor.getSnapshot().context.patientReminders).toEqual([]);
+    });
+  });
+
+  describe('LOAD_DOCTOR_PATIENT_FOLLOWUPS', () => {
+    it('populates doctorPatientReminders on success without clobbering patientReminders', async () => {
+      const list = [reminder({ id: 'd1', historyId: 'history-1' })];
+      vi.mocked(FollowUpService.getDoctorPatientReminders).mockResolvedValueOnce(list);
+
+      actor.send({
+        type: 'LOAD_DOCTOR_PATIENT_FOLLOWUPS',
+        doctorId: 'doctor-1',
+        patientId: 'patient-1',
+        accessToken: 'token-123',
+      });
+
+      expect(actor.getSnapshot().value).toBe('loadingDoctorPatientReminders');
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(FollowUpService.getDoctorPatientReminders).toHaveBeenCalledWith('token-123', 'doctor-1', 'patient-1');
+      expect(actor.getSnapshot().context.doctorPatientReminders).toEqual(list);
+      // The patient-role field must remain untouched.
+      expect(actor.getSnapshot().context.patientReminders).toEqual([]);
+    });
+
+    it('sets an error and preserves doctorPatientReminders on failure', async () => {
+      vi.mocked(FollowUpService.getDoctorPatientReminders).mockRejectedValueOnce(new Error('nope'));
+
+      actor.send({
+        type: 'LOAD_DOCTOR_PATIENT_FOLLOWUPS',
+        doctorId: 'doctor-1',
+        patientId: 'patient-1',
+        accessToken: 'token-123',
+      });
+
+      await vi.waitFor(() => {
+        expect(actor.getSnapshot().value).toBe('idle');
+      });
+
+      expect(actor.getSnapshot().context.error).toBeTruthy();
+      expect(actor.getSnapshot().context.doctorPatientReminders).toEqual([]);
     });
   });
 });

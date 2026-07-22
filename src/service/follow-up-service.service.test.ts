@@ -292,6 +292,41 @@ describe('FollowUpService', () => {
     });
   });
 
+  describe('getDoctorPatientReminders', () => {
+    it('GETs the doctor-scoped patient followups URL and parses the list', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([mockReminder]) });
+
+      const result = await FollowUpService.getDoctorPatientReminders(accessToken, doctorId, patientId);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/api/doctors/doctor-1/patients/patient-1/followups',
+        expect.objectContaining({
+          method: 'GET',
+          headers: expect.objectContaining({ Authorization: `Bearer ${accessToken}` }),
+        }),
+      );
+      expect(result).toEqual([mockReminder]);
+    });
+
+    it('returns an empty array when the doctor scheduled no reminders for the patient', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: () => Promise.resolve([]) });
+
+      const result = await FollowUpService.getDoctorPatientReminders(accessToken, doctorId, patientId);
+      expect(result).toEqual([]);
+    });
+
+    it('throws the mapped error body on failure', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        json: () => Promise.resolve({ error: 'Unauthorized access' }),
+      });
+
+      await expect(FollowUpService.getDoctorPatientReminders(accessToken, doctorId, patientId))
+        .rejects.toThrow('Unauthorized access');
+    });
+  });
+
   // FBUG-003 — a mid-session access-token expiry used to drop the action silently.
   // Every service now goes through the centralized interceptor, so a 401 triggers
   // a refresh and the original request is retried transparently.
